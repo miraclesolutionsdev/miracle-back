@@ -6,12 +6,20 @@ import Usuario from "./src/models/usuario.model.js"
 
 const app = express()
 
+// CORS - permitir frontend en Vercel y desarrollo local
+const corsOptions = {
+  origin: [
+    "https://miracle-front-jade.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000"
+  ],
+  optionsSuccessStatus: 200
+}
+app.use(cors(corsOptions))
+app.use(express.json())
+
 // Conectar a MongoDB
 conectarDB()
-
-// Middlewares
-app.use(cors())
-app.use(express.json())
 
 // Ruta raíz
 app.get("/", (req, res) => {
@@ -52,9 +60,13 @@ app.get("/usuarios", async (req, res) => {
   }
 })
 
-// Puerto
+// Puerto - solo para desarrollo local (Vercel usa serverless)
 const PORT = process.env.PORT || 3000
 
-app.listen(PORT, () => {
-  console.log(`🔥 Servidor escuchando en http://localhost:${PORT}`)
-})
+if (process.env.VERCEL !== "1") {
+  app.listen(PORT, () => {
+    console.log(`🔥 Servidor escuchando en http://localhost:${PORT}`)
+  })
+}
+
+export default app
