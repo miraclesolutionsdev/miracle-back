@@ -3,6 +3,7 @@ import express from "express"
 import cors from "cors"
 import { conectarDB } from "./src/config/db.js"
 import Usuario from "./src/models/usuario.model.js"
+import clienteRoutes from "./src/routes/cliente.routes.js"
 
 const app = express()
 
@@ -59,6 +60,9 @@ app.get("/usuarios", async (req, res) => {
     res.status(500).json({ error: error.message })
   }
 })
+
+// CRUD Clientes
+app.use("/clientes", clienteRoutes)
 
 // Puerto - solo para desarrollo local (Vercel usa serverless)
 const PORT = process.env.PORT || 3000
