@@ -19,8 +19,16 @@ const corsOptions = {
 app.use(cors(corsOptions))
 app.use(express.json())
 
-// Conectar a MongoDB
-conectarDB()
+// Asegurar conexión a MongoDB antes de rutas que usan la DB
+app.use(async (req, res, next) => {
+  if (req.path === "/" || req.path === "/favicon.ico") return next()
+  try {
+    await conectarDB()
+    next()
+  } catch (err) {
+    res.status(503).json({ error: "No se pudo conectar a la base de datos" })
+  }
+})
 
 // Ruta raíz
 app.get("/", (req, res) => {
