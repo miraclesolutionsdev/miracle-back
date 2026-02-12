@@ -16,12 +16,6 @@ const clienteSchema = new mongoose.Schema(
     whatsapp: { type: String, trim: true, default: "" },
     direccion: { type: String, trim: true, default: "" },
     ciudadBarrio: { type: String, trim: true, default: "" },
-    estado: {
-      type: String,
-      enum: { values: ["activo", "pausado", "inactivo"], message: "Estado no válido" },
-      default: "activo",
-    },
-    miracleCoins: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 )
