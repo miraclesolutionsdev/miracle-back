@@ -53,6 +53,12 @@ export async function crear(req, res) {
         error: "Todos los campos son obligatorios: nombreEmpresa, cedulaNit, email, whatsapp, direccion, ciudadBarrio",
       })
     }
+    const existente = await Cliente.findOne({ cedulaNit: ced })
+    if (existente) {
+      return res.status(409).json({
+        error: "Ya existe un cliente con esta cédula/NIT.",
+      })
+    }
     const cliente = await Cliente.create({
       nombreEmpresa: nom,
       cedulaNit: ced,
@@ -76,11 +82,23 @@ export async function actualizar(req, res) {
     const { nombreEmpresa, cedulaNit, email, whatsapp, direccion, ciudadBarrio } = req.body
     const update = {}
     if (nombreEmpresa !== undefined) update.nombreEmpresa = nombreEmpresa
-    if (cedulaNit !== undefined) update.cedulaNit = cedulaNit
+    if (cedulaNit !== undefined) update.cedulaNit = (cedulaNit ?? "").trim()
     if (email !== undefined) update.email = email
     if (whatsapp !== undefined) update.whatsapp = whatsapp
     if (direccion !== undefined) update.direccion = direccion
     if (ciudadBarrio !== undefined) update.ciudadBarrio = ciudadBarrio
+
+    if (update.cedulaNit !== undefined) {
+      const otro = await Cliente.findOne({
+        cedulaNit: update.cedulaNit,
+        _id: { $ne: id },
+      })
+      if (otro) {
+        return res.status(409).json({
+          error: "Ya existe un cliente con esta cédula/NIT.",
+        })
+      }
+    }
 
     const cliente = await Cliente.findByIdAndUpdate(id, update, { new: true })
     if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" })

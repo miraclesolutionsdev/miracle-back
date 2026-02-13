@@ -84,6 +84,13 @@ export async function crear(req, res) {
     if (!nombre) {
       return res.status(400).json({ error: "Faltan campos requeridos: nombre" })
     }
+    const nom = (nombre || "").trim()
+    const existente = await Producto.findOne({ nombre: nom })
+    if (existente) {
+      return res.status(409).json({
+        error: "Ya existe un producto o servicio con ese nombre.",
+      })
+    }
     let imagenes = []
     if (files.length > 0) {
       imagenes = files.map((f) => ({
@@ -96,7 +103,7 @@ export async function crear(req, res) {
       }))
     }
     const producto = await Producto.create({
-      nombre,
+      nombre: nom,
       descripcion: descripcion ?? "",
       precio: parsePrecio(precio),
       tipo: tipo === "producto" ? "producto" : "servicio",
@@ -121,8 +128,20 @@ export async function actualizar(req, res) {
     const { nombre, descripcion, precio, tipo, estado, stock, usos, caracteristicas } = req.body
     const files = req.files || []
     const update = {}
-    if (nombre !== undefined) update.nombre = nombre
+    if (nombre !== undefined) update.nombre = (nombre || "").trim()
     if (descripcion !== undefined) update.descripcion = descripcion
+
+    if (update.nombre !== undefined) {
+      const otro = await Producto.findOne({
+        nombre: update.nombre,
+        _id: { $ne: id },
+      })
+      if (otro) {
+        return res.status(409).json({
+          error: "Ya existe un producto o servicio con ese nombre.",
+        })
+      }
+    }
     if (precio !== undefined) update.precio = parsePrecio(precio)
     if (tipo !== undefined && ["servicio", "producto"].includes(tipo)) update.tipo = tipo
     if (estado !== undefined && ["activo", "inactivo"].includes(estado)) update.estado = estado
