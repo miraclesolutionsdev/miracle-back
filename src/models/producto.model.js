@@ -19,7 +19,16 @@ const productoSchema = new mongoose.Schema(
       enum: { values: ["activo", "inactivo"], message: "Estado no válido" },
       default: "activo",
     },
-    imagenes: { type: [String], default: [] },
+    imagenes: {
+      type: [
+        {
+          data: { type: Buffer },
+          contentType: { type: String, default: "image/jpeg" },
+          url: { type: String },
+        },
+      ],
+      default: [],
+    },
     stock: { type: Number, default: 0, min: 0 },
     usos: { type: [String], default: [] },
     caracteristicas: { type: [String], default: [] },
