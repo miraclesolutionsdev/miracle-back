@@ -1,5 +1,6 @@
 import Producto from "../models/producto.model.js"
 import mongoose from "mongoose"
+import { subirImagenEvitandoDuplicado } from "../services/s3.service.js"
 
 function parsePrecio(val) {
   if (typeof val === "number" && !Number.isNaN(val)) return Math.max(0, val)
@@ -15,11 +16,8 @@ function toProductoResponse(doc) {
   const o = doc.toObject ? doc.toObject() : doc
   const id = o._id?.toString()
   const imagenesRaw = Array.isArray(o.imagenes) ? o.imagenes : []
-  const imagenes = imagenesRaw.map((img, i) => {
-    if (img?.data) {
-      return { url: `productos/${id}/imagenes/${i}`, contentType: img.contentType || "image/jpeg" }
-    }
-    if (img?.url) return { url: img.url, contentType: img.contentType }
+  const imagenes = imagenesRaw.map((img) => {
+    if (img?.url) return { url: img.url, contentType: img.contentType || "image/jpeg" }
     return null
   }).filter(Boolean)
   return {
@@ -92,14 +90,10 @@ export async function crear(req, res) {
       })
     }
     let imagenes = []
-    if (files.length > 0) {
-      imagenes = files.map((f) => ({
-        data: f.buffer,
-        contentType: f.mimetype || "image/jpeg",
-      }))
-    } else if (req.body.imagenes && Array.isArray(req.body.imagenes)) {
+    if (req.body.imagenes && Array.isArray(req.body.imagenes) && files.length === 0) {
       imagenes = req.body.imagenes.map((url) => ({
         url: typeof url === "string" ? url : url.url || "",
+        contentType: (typeof url === "object" && url?.contentType) ? url.contentType : "image/jpeg",
       }))
     }
     const producto = await Producto.create({
@@ -113,6 +107,19 @@ export async function crear(req, res) {
       usos: parseJsonArray(usos),
       caracteristicas: parseJsonArray(caracteristicas),
     })
+    if (files.length > 0) {
+      const urlsSubidas = []
+      for (const f of files) {
+        const url = await subirImagenEvitandoDuplicado(
+          f.buffer,
+          f.mimetype || "image/jpeg",
+          f.originalname || "imagen.jpg"
+        )
+        urlsSubidas.push({ url, contentType: f.mimetype || "image/jpeg" })
+      }
+      producto.imagenes = urlsSubidas
+      await producto.save()
+    }
     res.status(201).json(toProductoResponse(producto))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -146,13 +153,24 @@ export async function actualizar(req, res) {
     if (tipo !== undefined && ["servicio", "producto"].includes(tipo)) update.tipo = tipo
     if (estado !== undefined && ["activo", "inactivo"].includes(estado)) update.estado = estado
     if (files.length > 0) {
-      update.imagenes = files.map((f) => ({
-        data: f.buffer,
-        contentType: f.mimetype || "image/jpeg",
-      }))
+      const productoActual = await Producto.findById(id).select("imagenes").lean()
+      const imagenesExistentes = Array.isArray(productoActual?.imagenes)
+        ? productoActual.imagenes.filter((img) => img?.url).map((img) => ({ url: img.url, contentType: img.contentType || "image/jpeg" }))
+        : []
+      const nuevasUrls = []
+      for (const f of files) {
+        const url = await subirImagenEvitandoDuplicado(
+          f.buffer,
+          f.mimetype || "image/jpeg",
+          f.originalname || "imagen.jpg"
+        )
+        nuevasUrls.push({ url, contentType: f.mimetype || "image/jpeg" })
+      }
+      update.imagenes = [...imagenesExistentes, ...nuevasUrls]
     } else if (req.body.imagenes !== undefined && Array.isArray(req.body.imagenes)) {
       update.imagenes = req.body.imagenes.map((url) => ({
         url: typeof url === "string" ? url : url.url || "",
+        contentType: (typeof url === "object" && url?.contentType) ? url.contentType : "image/jpeg",
       }))
     }
     if (stock !== undefined) update.stock = Math.max(0, Number(stock) || 0)
@@ -188,18 +206,16 @@ export async function obtenerImagen(req, res) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
     const producto = await Producto.findById(id).select("imagenes")
-    if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
+    if (!producto) return res.status(404).json({ error: "Imagen no encontrada" })
     const i = parseInt(index, 10)
     if (Number.isNaN(i) || i < 0 || !Array.isArray(producto.imagenes) || !producto.imagenes[i]) {
       return res.status(404).json({ error: "Imagen no encontrada" })
     }
     const img = producto.imagenes[i]
-    if (!img?.data) {
-      return res.status(404).json({ error: "Imagen no encontrada" })
+    if (img?.url && (img.url.startsWith("http") || img.url.startsWith("//"))) {
+      return res.redirect(302, img.url)
     }
-    res.set("Content-Type", img.contentType || "image/jpeg")
-    res.set("Cache-Control", "public, max-age=86400")
-    res.send(img.data)
+    return res.status(404).json({ error: "Imagen no encontrada" })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }

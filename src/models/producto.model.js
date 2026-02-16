@@ -22,9 +22,8 @@ const productoSchema = new mongoose.Schema(
     imagenes: {
       type: [
         {
-          data: { type: Buffer },
+          url: { type: String, required: true },
           contentType: { type: String, default: "image/jpeg" },
-          url: { type: String },
         },
       ],
       default: [],
