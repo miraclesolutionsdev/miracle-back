@@ -5,7 +5,8 @@ import { subirImagenEvitandoDuplicado } from "../services/s3.service.js"
 function parsePrecio(val) {
   if (typeof val === "number" && !Number.isNaN(val)) return Math.max(0, val)
   if (typeof val === "string") {
-    const num = Number(val.replace(/[^0-9.]/g, ""))
+    const limpio = val.replace(/\D/g, "")
+    const num = Number(limpio)
     return Number.isNaN(num) ? 0 : Math.max(0, num)
   }
   return 0
