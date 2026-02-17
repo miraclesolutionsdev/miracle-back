@@ -20,15 +20,15 @@ function getBaseUrl() {
 }
 
 /**
- * Genera una key S3 a partir del nombre de archivo: productos/{nombre-sanitizado}.
+ * Genera una key S3 a partir del nombre de archivo: {carpeta}/{nombre-sanitizado}.
  * Si dos archivos tienen el mismo nombre, generan la misma key (evita duplicados).
  */
-function keyDesdeNombre(originalname) {
-  const base = (originalname || "").replace(/^.*[/\\]/, "").trim().toLowerCase() || "imagen"
-  const ext = base.includes(".") ? base.slice(base.lastIndexOf(".")) : ".jpg"
-  const sinExt = base.slice(0, base.length - ext.length) || "imagen"
-  const sanitized = sinExt.replace(/[^a-z0-9._-]/g, "_").slice(0, 100) || "imagen"
-  return `productos/${sanitized}${ext}`
+function keyDesdeNombre(originalname, carpeta = "productos") {
+  const base = (originalname || "").replace(/^.*[/\\]/, "").trim().toLowerCase() || "archivo"
+  const ext = base.includes(".") ? base.slice(base.lastIndexOf(".")) : ".bin"
+  const sinExt = base.slice(0, base.length - ext.length) || "archivo"
+  const sanitized = sinExt.replace(/[^a-z0-9._-]/g, "_").slice(0, 100) || "archivo"
+  return `${carpeta}/${sanitized}${ext}`
 }
 
 /**
@@ -74,9 +74,30 @@ export async function subirImagen(buffer, contentType, key) {
  */
 export async function subirImagenEvitandoDuplicado(buffer, contentType, originalname) {
   if (!bucket) throw new Error("S3_BUCKET no está configurado en .env")
-  const key = keyDesdeNombre(originalname)
+  const key = keyDesdeNombre(originalname, "productos")
   if (await existeEnS3(key)) {
     return `${getBaseUrl()}/${key}`
   }
   return subirImagen(buffer, contentType, key)
+}
+
+/**
+ * Sube un archivo (video o imagen) a S3 en la carpeta audiovisuales.
+ * Evita duplicados por nombre de archivo.
+ */
+export async function subirArchivoAudiovisualEvitandoDuplicado(buffer, contentType, originalname) {
+  if (!bucket) throw new Error("S3_BUCKET no está configurado en .env")
+  const key = keyDesdeNombre(originalname, "audiovisuales")
+  if (await existeEnS3(key)) {
+    return `${getBaseUrl()}/${key}`
+  }
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType || "application/octet-stream",
+    })
+  )
+  return `${getBaseUrl()}/${key}`
 }
