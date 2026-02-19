@@ -51,12 +51,27 @@ function parseJsonArray(val) {
 
 export async function listarTodos(req, res) {
   try {
-    const { estado, tipo } = req.query
+    const { estado, tipo, nombre, limit, offset } = req.query
     const filter = {}
     if (estado) filter.estado = estado
     if (tipo) filter.tipo = tipo
-    const productos = await Producto.find(filter).sort({ createdAt: -1 })
-    res.json(productos.map(toProductoResponse))
+    if (nombre && String(nombre).trim()) {
+      filter.nombre = new RegExp(String(nombre).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i")
+    }
+    const skip = Math.max(0, Number(offset) || 0)
+    const limitNum = Math.min(500, Math.max(1, Number(limit) || 100))
+    const productos = await Producto.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean()
+    const total = await Producto.countDocuments(filter)
+    res.json({
+      productos: productos.map((doc) => toProductoResponse(doc)),
+      total,
+      limit: limitNum,
+      offset: skip,
+    })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }

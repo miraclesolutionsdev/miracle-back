@@ -6,6 +6,7 @@ import Usuario from "./src/models/usuario.model.js"
 import clienteRoutes from "./src/routes/cliente.routes.js"
 import productoRoutes from "./src/routes/producto.routes.js"
 import audiovisualRoutes from "./src/routes/audiovisual.routes.js"
+import leadContactoRoutes from "./src/routes/leadContacto.routes.js"
 
 const app = express()
 
@@ -79,6 +80,9 @@ app.use("/productos", productoRoutes)
 
 // Audiovisual
 app.use("/audiovisual", audiovisualRoutes)
+
+// Leads de contacto (WhatsApp / IA)
+app.use("/leads-contacto", leadContactoRoutes)
 
 // Puerto - solo para desarrollo local (Vercel usa serverless)
 const PORT = process.env.PORT || 3000
