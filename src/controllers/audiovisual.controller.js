@@ -1,6 +1,9 @@
 import PiezaAudiovisual from "../models/piezaAudiovisual.model.js"
 import mongoose from "mongoose"
-import { subirArchivoAudiovisualEvitandoDuplicado } from "../services/s3.service.js"
+import {
+  subirArchivoAudiovisualEvitandoDuplicado,
+  obtenerPresignedPutAudiovisual,
+} from "../services/s3.service.js"
 
 function toResponse(doc) {
   if (!doc) return null
@@ -65,6 +68,46 @@ export async function crear(req, res) {
       contentType: file.mimetype || "application/octet-stream",
     })
 
+    res.status(201).json(toResponse(pieza))
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+}
+
+export async function obtenerPresignedUrl(req, res) {
+  try {
+    const { filename, contentType } = req.body
+    const name = (filename || "").trim() || "archivo"
+    const type = (contentType || "").trim() || "application/octet-stream"
+    const { uploadUrl, key, publicUrl } = await obtenerPresignedPutAudiovisual(name, type)
+    res.json({ uploadUrl, key, publicUrl })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+}
+
+export async function confirmarSubida(req, res) {
+  try {
+    const { tipo, plataforma, resolucion, duracion, campanaAsociada, key, publicUrl, contentType } = req.body
+    if (!tipo || !plataforma) {
+      return res.status(400).json({ error: "Faltan campos: tipo, plataforma" })
+    }
+    if (!publicUrl && !key) {
+      return res.status(400).json({ error: "Falta publicUrl o key del archivo en S3" })
+    }
+    const formato =
+      tipo === "Video" && resolucion && (duracion != null && duracion !== "")
+        ? `${resolucion} · ${duracion}s`
+        : (resolucion || "").trim()
+    const pieza = await PiezaAudiovisual.create({
+      tipo: tipo === "Imagen" ? "Imagen" : "Video",
+      plataforma: (plataforma || "").trim(),
+      formato,
+      estado: "pendiente",
+      campanaAsociada: (campanaAsociada || "").trim(),
+      url: (publicUrl || "").trim() || key,
+      contentType: (contentType || "").trim() || "application/octet-stream",
+    })
     res.status(201).json(toResponse(pieza))
   } catch (error) {
     res.status(500).json({ error: error.message })

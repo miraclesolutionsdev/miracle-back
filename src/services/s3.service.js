@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3"
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
 const bucket = process.env.S3_BUCKET
 const region = process.env.AWS_REGION || "us-east-1"
@@ -100,4 +101,33 @@ export async function subirArchivoAudiovisualEvitandoDuplicado(buffer, contentTy
     })
   )
   return `${getBaseUrl()}/${key}`
+}
+
+/**
+ * Genera una key única para audiovisuales (evita sobrescribir).
+ */
+function keyAudiovisualUnica(originalname) {
+  const base = (originalname || "").replace(/^.*[/\\]/, "").trim().toLowerCase() || "archivo"
+  const ext = base.includes(".") ? base.slice(base.lastIndexOf(".")) : ".bin"
+  const sinExt = base.slice(0, base.length - ext.length) || "archivo"
+  const sanitized = sinExt.replace(/[^a-z0-9._-]/g, "_").slice(0, 80) || "archivo"
+  const uniq = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  return `audiovisuales/${uniq}_${sanitized}${ext}`
+}
+
+/**
+ * Obtiene una URL firmada (presigned) para que el cliente suba el archivo directo a S3.
+ * Permite archivos hasta 1GB sin pasar por el servidor.
+ */
+export async function obtenerPresignedPutAudiovisual(originalname, contentType) {
+  if (!bucket) throw new Error("S3_BUCKET no está configurado en .env")
+  const key = keyAudiovisualUnica(originalname)
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType || "application/octet-stream",
+  })
+  const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 })
+  const publicUrl = `${getBaseUrl()}/${key}`
+  return { uploadUrl, key, publicUrl }
 }

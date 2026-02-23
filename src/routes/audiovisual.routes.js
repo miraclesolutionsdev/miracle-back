@@ -1,6 +1,12 @@
 import { Router } from "express"
 import multer from "multer"
-import { listar, crear, actualizarEstado } from "../controllers/audiovisual.controller.js"
+import {
+  listar,
+  crear,
+  actualizarEstado,
+  obtenerPresignedUrl,
+  confirmarSubida,
+} from "../controllers/audiovisual.controller.js"
 
 const router = Router()
 const upload = multer({
@@ -9,6 +15,8 @@ const upload = multer({
 })
 
 router.get("/", listar)
+router.post("/presigned-url", obtenerPresignedUrl)
+router.post("/confirmar", confirmarSubida)
 router.post("/", upload.single("archivo"), crear)
 router.patch("/:id/estado", actualizarEstado)
 
