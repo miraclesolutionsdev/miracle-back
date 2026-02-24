@@ -23,8 +23,10 @@ function toResponse(doc) {
 
 export async function listar(req, res) {
   try {
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { estado, tipo } = req.query
-    const filter = {}
+    const filter = { $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }] }
     if (estado) filter.estado = estado
     if (tipo) filter.tipo = tipo
     const piezas = await PiezaAudiovisual.find(filter).sort({ createdAt: -1 })
@@ -36,6 +38,8 @@ export async function listar(req, res) {
 
 export async function crear(req, res) {
   try {
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { tipo, plataforma, resolucion, duracion, campanaAsociada } = req.body
     const file = req.file
 
@@ -59,6 +63,7 @@ export async function crear(req, res) {
     )
 
     const pieza = await PiezaAudiovisual.create({
+      tenantId: req.tenantId,
       tipo: tipo === "Imagen" ? "Imagen" : "Video",
       plataforma: (plataforma || "").trim(),
       formato: (formato || "").trim(),
@@ -99,7 +104,10 @@ export async function confirmarSubida(req, res) {
       tipo === "Video" && resolucion && (duracion != null && duracion !== "")
         ? `${resolucion} · ${duracion}s`
         : (resolucion || "").trim()
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const pieza = await PiezaAudiovisual.create({
+      tenantId,
       tipo: tipo === "Imagen" ? "Imagen" : "Video",
       plataforma: (plataforma || "").trim(),
       formato,
@@ -127,8 +135,13 @@ export async function actualizarEstado(req, res) {
       return res.status(400).json({ error: "Estado no válido" })
     }
 
-    const pieza = await PiezaAudiovisual.findByIdAndUpdate(
-      id,
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
+    const pieza = await PiezaAudiovisual.findOneAndUpdate(
+      {
+        _id: id,
+        $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }],
+      },
       { estado },
       { new: true }
     )

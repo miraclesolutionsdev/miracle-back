@@ -2,7 +2,8 @@ import "dotenv/config"
 import express from "express"
 import cors from "cors"
 import { conectarDB } from "./src/config/db.js"
-import Usuario from "./src/models/usuario.model.js"
+import { requireAuth } from "./src/middleware/auth.middleware.js"
+import authRoutes from "./src/routes/auth.routes.js"
 import clienteRoutes from "./src/routes/cliente.routes.js"
 import productoRoutes from "./src/routes/producto.routes.js"
 import audiovisualRoutes from "./src/routes/audiovisual.routes.js"
@@ -36,48 +37,13 @@ app.get("/", (req, res) => {
   res.send("🚀 Backend Express funcionando")
 })
 
-// POST - Crear usuario
-app.post("/usuarios", async (req, res) => {
-  try {
-    const { nombre, contraseña, tel } = req.body
-    if (!nombre || !contraseña || !tel) {
-      return res.status(400).json({ error: "Faltan campos: nombre, contraseña, tel" })
-    }
-    const usuario = await Usuario.create({ nombre, contraseña, tel })
-    res.status(201).json({
-      id: usuario._id,
-      nombre: usuario.nombre,
-      contraseña: usuario.contraseña,
-      tel: usuario.tel
-    })
-  } catch (error) {
-    res.status(500).json({ error: error.message })
-  }
-})
+// Auth (login, register) - sin protección
+app.use("/auth", authRoutes)
 
-// GET - Listar todos los usuarios
-app.get("/usuarios", async (req, res) => {
-  try {
-    const usuarios = await Usuario.find({}).sort({ createdAt: -1 })
-    res.json(usuarios.map(u => ({
-      id: u._id,
-      nombre: u.nombre,
-      contraseña: u.contraseña,
-      tel: u.tel
-    })))
-  } catch (error) {
-    res.status(500).json({ error: error.message })
-  }
-})
-
-// CRUD Clientes
-app.use("/clientes", clienteRoutes)
-
-// CRUD Productos
-app.use("/productos", productoRoutes)
-
-// Audiovisual
-app.use("/audiovisual", audiovisualRoutes)
+// Rutas de datos protegidas por JWT o API key
+app.use("/clientes", requireAuth, clienteRoutes)
+app.use("/productos", requireAuth, productoRoutes)
+app.use("/audiovisual", requireAuth, audiovisualRoutes)
 
 // Puerto - solo para desarrollo local (Vercel usa serverless)
 const PORT = process.env.PORT || 3000

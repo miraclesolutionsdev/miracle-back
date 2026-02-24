@@ -2,6 +2,7 @@ import mongoose from "mongoose"
 
 const piezaAudiovisualSchema = new mongoose.Schema(
   {
+    tenantId: { type: mongoose.Schema.Types.ObjectId, ref: "Tenant", default: null },
     tipo: {
       type: String,
       enum: { values: ["Video", "Imagen"], message: "Tipo no válido" },
@@ -18,7 +19,7 @@ const piezaAudiovisualSchema = new mongoose.Schema(
     url: { type: String, required: true },
     contentType: { type: String, default: "application/octet-stream" },
   },
-  { timestamps: true }
+  { timestamps: true, collection: "audiovisuales" }
 )
 
 export default mongoose.model("PiezaAudiovisual", piezaAudiovisualSchema)

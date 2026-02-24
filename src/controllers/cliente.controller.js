@@ -21,8 +21,10 @@ function toClienteResponse(doc) {
 
 export async function listarTodos(req, res) {
   try {
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { origen, ciudad, busqueda, fechaDesde, fechaHasta } = req.query
-    const filter = {}
+    const filter = { $or: [{ tenantId: tenantId }, { tenantId: null }, { tenantId: { $exists: false } }] }
 
     if (origen && ["plataforma", "whatsapp"].includes(String(origen).toLowerCase())) {
       filter.origen = String(origen).toLowerCase()
@@ -57,7 +59,7 @@ export async function listarTodos(req, res) {
       if (Object.keys(filter.createdAt).length === 0) delete filter.createdAt
     }
 
-    const clientes = await Cliente.find(filter).sort({ createdAt: -1 })
+    const clientes = await Cliente.find(filter).sort({ createdAt: -1 }).lean()
     res.json(clientes.map(toClienteResponse))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -66,11 +68,16 @@ export async function listarTodos(req, res) {
 
 export async function obtenerUno(req, res) {
   try {
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { id } = req.params
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de cliente no válido" })
     }
-    const cliente = await Cliente.findById(id)
+    const cliente = await Cliente.findOne({
+      _id: id,
+      $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }],
+    })
     if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" })
     res.json(toClienteResponse(cliente))
   } catch (error) {
@@ -80,6 +87,8 @@ export async function obtenerUno(req, res) {
 
 export async function crear(req, res) {
   try {
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const {
       nombreEmpresa,
       nombre,
@@ -106,7 +115,10 @@ export async function crear(req, res) {
           error: "Para origen WhatsApp son obligatorios: nombre (o nombreEmpresa) y telefono (o whatsapp)",
         })
       }
+      const tenantId = req.tenantId
+      if (!tenantId) return res.status(401).json({ error: "No autorizado" })
       const cliente = await Cliente.create({
+        tenantId,
         nombreEmpresa: nom,
         cedulaNit: (cedulaNit ?? "").trim(),
         email: (email ?? "").trim(),
@@ -120,6 +132,8 @@ export async function crear(req, res) {
       return res.status(201).json(toClienteResponse(cliente))
     }
 
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const nom = (nombreEmpresa || "").trim()
     const ced = (cedulaNit ?? "").trim()
     const em = (email || "").trim()
@@ -131,13 +145,14 @@ export async function crear(req, res) {
         error: "Todos los campos son obligatorios: nombreEmpresa, cedulaNit, email, whatsapp, direccion, ciudadBarrio",
       })
     }
-    const existente = await Cliente.findOne({ cedulaNit: ced })
+    const existente = await Cliente.findOne({ cedulaNit: ced, tenantId })
     if (existente) {
       return res.status(409).json({
         error: "Ya existe un cliente con esta cédula/NIT.",
       })
     }
     const cliente = await Cliente.create({
+      tenantId,
       nombreEmpresa: nom,
       cedulaNit: ced,
       email: em,
@@ -156,6 +171,7 @@ export async function crear(req, res) {
 
 export async function actualizar(req, res) {
   try {
+    if (!req.tenantId) return res.status(401).json({ error: "No autorizado" })
     const { id } = req.params
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de cliente no válido" })
@@ -174,6 +190,7 @@ export async function actualizar(req, res) {
     if (update.cedulaNit !== undefined) {
       const otro = await Cliente.findOne({
         cedulaNit: update.cedulaNit,
+        tenantId: req.tenantId,
         _id: { $ne: id },
       })
       if (otro) {
@@ -183,7 +200,11 @@ export async function actualizar(req, res) {
       }
     }
 
-    const cliente = await Cliente.findByIdAndUpdate(id, update, { new: true })
+    const cliente = await Cliente.findOneAndUpdate(
+      { _id: id, $or: [{ tenantId: req.tenantId }, { tenantId: null }, { tenantId: { $exists: false } }] },
+      update,
+      { new: true }
+    )
     if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" })
     res.json(toClienteResponse(cliente))
   } catch (error) {

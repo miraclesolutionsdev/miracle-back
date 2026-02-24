@@ -2,6 +2,7 @@ import mongoose from "mongoose"
 
 const clienteSchema = new mongoose.Schema(
   {
+    tenantId: { type: mongoose.Schema.Types.ObjectId, ref: "Tenant", default: null },
     nombreEmpresa: {
       type: String,
       required: [true, "El nombre o empresa es obligatorio"],

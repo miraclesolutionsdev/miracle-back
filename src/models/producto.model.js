@@ -2,6 +2,7 @@ import mongoose from "mongoose"
 
 const productoSchema = new mongoose.Schema(
   {
+    tenantId: { type: mongoose.Schema.Types.ObjectId, ref: "Tenant", default: null },
     nombre: {
       type: String,
       required: [true, "El nombre del producto es obligatorio"],

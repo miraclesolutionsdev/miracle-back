@@ -51,8 +51,10 @@ function parseJsonArray(val) {
 
 export async function listarTodos(req, res) {
   try {
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { estado, tipo, nombre, limit, offset } = req.query
-    const filter = {}
+    const filter = { $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }] }
     if (estado) filter.estado = estado
     if (tipo) filter.tipo = tipo
     if (nombre && String(nombre).trim()) {
@@ -79,11 +81,16 @@ export async function listarTodos(req, res) {
 
 export async function obtenerUno(req, res) {
   try {
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { id } = req.params
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
-    const producto = await Producto.findById(id)
+    const producto = await Producto.findOne({
+      _id: id,
+      $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }],
+    })
     if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
     res.json(toProductoResponse(producto))
   } catch (error) {
@@ -93,13 +100,15 @@ export async function obtenerUno(req, res) {
 
 export async function crear(req, res) {
   try {
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { nombre, descripcion, precio, tipo, estado, stock, usos, caracteristicas } = req.body
     const files = req.files || []
     if (!nombre) {
       return res.status(400).json({ error: "Faltan campos requeridos: nombre" })
     }
     const nom = (nombre || "").trim()
-    const existente = await Producto.findOne({ nombre: nom })
+    const existente = await Producto.findOne({ nombre: nom, tenantId })
     if (existente) {
       return res.status(409).json({
         error: "Ya existe un producto o servicio con ese nombre.",
@@ -113,6 +122,7 @@ export async function crear(req, res) {
       }))
     }
     const producto = await Producto.create({
+      tenantId,
       nombre: nom,
       descripcion: descripcion ?? "",
       precio: parsePrecio(precio),
@@ -144,6 +154,7 @@ export async function crear(req, res) {
 
 export async function actualizar(req, res) {
   try {
+    if (!req.tenantId) return res.status(401).json({ error: "No autorizado" })
     const { id } = req.params
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
@@ -157,6 +168,7 @@ export async function actualizar(req, res) {
     if (update.nombre !== undefined) {
       const otro = await Producto.findOne({
         nombre: update.nombre,
+        tenantId: req.tenantId,
         _id: { $ne: id },
       })
       if (otro) {
@@ -169,7 +181,12 @@ export async function actualizar(req, res) {
     if (tipo !== undefined && ["servicio", "producto"].includes(tipo)) update.tipo = tipo
     if (estado !== undefined && ["activo", "inactivo"].includes(estado)) update.estado = estado
     if (files.length > 0) {
-      const productoActual = await Producto.findById(id).select("imagenes").lean()
+      const productoActual = await Producto.findOne({
+        _id: id,
+        $or: [{ tenantId: req.tenantId }, { tenantId: null }, { tenantId: { $exists: false } }],
+      })
+        .select("imagenes")
+        .lean()
       const imagenesExistentes = Array.isArray(productoActual?.imagenes)
         ? productoActual.imagenes.filter((img) => img?.url).map((img) => ({ url: img.url, contentType: img.contentType || "image/jpeg" }))
         : []
@@ -193,7 +210,11 @@ export async function actualizar(req, res) {
     if (usos !== undefined) update.usos = parseJsonArray(usos)
     if (caracteristicas !== undefined) update.caracteristicas = parseJsonArray(caracteristicas)
 
-    const producto = await Producto.findByIdAndUpdate(id, update, { new: true })
+    const producto = await Producto.findOneAndUpdate(
+      { _id: id, $or: [{ tenantId: req.tenantId }, { tenantId: null }, { tenantId: { $exists: false } }] },
+      update,
+      { new: true }
+    )
     if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
     res.json(toProductoResponse(producto))
   } catch (error) {
@@ -203,11 +224,16 @@ export async function actualizar(req, res) {
 
 export async function inactivar(req, res) {
   try {
+    if (!req.tenantId) return res.status(401).json({ error: "No autorizado" })
     const { id } = req.params
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
-    const producto = await Producto.findByIdAndUpdate(id, { estado: "inactivo" }, { new: true })
+    const producto = await Producto.findOneAndUpdate(
+      { _id: id, $or: [{ tenantId: req.tenantId }, { tenantId: null }, { tenantId: { $exists: false } }] },
+      { estado: "inactivo" },
+      { new: true }
+    )
     if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
     res.json(toProductoResponse(producto))
   } catch (error) {
@@ -217,11 +243,16 @@ export async function inactivar(req, res) {
 
 export async function obtenerImagen(req, res) {
   try {
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { id, index } = req.params
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
-    const producto = await Producto.findById(id).select("imagenes")
+    const producto = await Producto.findOne({
+      _id: id,
+      $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }],
+    }).select("imagenes")
     if (!producto) return res.status(404).json({ error: "Imagen no encontrada" })
     const i = parseInt(index, 10)
     if (Number.isNaN(i) || i < 0 || !Array.isArray(producto.imagenes) || !producto.imagenes[i]) {
