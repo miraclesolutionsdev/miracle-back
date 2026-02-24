@@ -22,8 +22,9 @@ app.use(cors(corsOptions))
 app.use(express.json())
 
 // Asegurar conexión a MongoDB antes de rutas que usan la DB
+// OPTIONS (preflight CORS) no requiere DB: dejar que cors() responda con 200 y cabeceras
 app.use(async (req, res, next) => {
-  if (req.path === "/" || req.path === "/favicon.ico") return next()
+  if (req.method === "OPTIONS" || req.path === "/" || req.path === "/favicon.ico") return next()
   try {
     await conectarDB()
     next()
