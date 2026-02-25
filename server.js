@@ -1,4 +1,4 @@
-import "dotenv/config"
+import dotenv from "dotenv"
 import express from "express"
 import cors from "cors"
 import { conectarDB } from "./src/config/db.js"
@@ -7,6 +7,12 @@ import authRoutes from "./src/routes/auth.routes.js"
 import clienteRoutes from "./src/routes/cliente.routes.js"
 import productoRoutes from "./src/routes/producto.routes.js"
 import audiovisualRoutes from "./src/routes/audiovisual.routes.js"
+
+// En Vercel las variables se inyectan; en local cargamos .env
+if (process.env.VERCEL !== "1") {
+  dotenv.config()
+}
+
 const app = express()
 
 // CORS - permitir frontend en Vercel y desarrollo local
@@ -46,13 +52,23 @@ app.use("/clientes", requireAuth, clienteRoutes)
 app.use("/productos", requireAuth, productoRoutes)
 app.use("/audiovisual", requireAuth, audiovisualRoutes)
 
+// Manejo de errores global (evita FUNCTION_INVOCATION_FAILED por errores no capturados)
+app.use((err, req, res, next) => {
+  console.error("Error no capturado:", err)
+  if (!res.headersSent) {
+    res.status(500).json({ error: err.message || "Error interno del servidor" })
+  }
+})
+
 // Puerto - solo para desarrollo local (Vercel usa serverless)
 const PORT = process.env.PORT || 3000
-
 if (process.env.VERCEL !== "1") {
   app.listen(PORT, () => {
     console.log(`🔥 Servidor escuchando en http://localhost:${PORT}`)
   })
 }
 
-export default app
+// Export para Vercel serverless: handler explícito que recibe (req, res)
+export default function handler(req, res) {
+  return app(req, res)
+}
