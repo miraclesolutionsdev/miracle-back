@@ -26,7 +26,7 @@ export async function listar(req, res) {
     const tenantId = req.tenantId
     if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { estado, tipo } = req.query
-    const filter = { $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }] }
+    const filter = { tenantId }
     if (estado) filter.estado = estado
     if (tipo) filter.tipo = tipo
     const piezas = await PiezaAudiovisual.find(filter).sort({ createdAt: -1 })
@@ -138,10 +138,7 @@ export async function actualizarEstado(req, res) {
     const tenantId = req.tenantId
     if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const pieza = await PiezaAudiovisual.findOneAndUpdate(
-      {
-        _id: id,
-        $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }],
-      },
+      { _id: id, tenantId },
       { estado },
       { new: true }
     )

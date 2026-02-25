@@ -54,7 +54,7 @@ export async function listarTodos(req, res) {
     const tenantId = req.tenantId
     if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { estado, tipo, nombre, limit, offset } = req.query
-    const filter = { $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }] }
+    const filter = { tenantId }
     if (estado) filter.estado = estado
     if (tipo) filter.tipo = tipo
     if (nombre && String(nombre).trim()) {
@@ -87,10 +87,7 @@ export async function obtenerUno(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
-    const producto = await Producto.findOne({
-      _id: id,
-      $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }],
-    })
+    const producto = await Producto.findOne({ _id: id, tenantId })
     if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
     res.json(toProductoResponse(producto))
   } catch (error) {
@@ -181,10 +178,7 @@ export async function actualizar(req, res) {
     if (tipo !== undefined && ["servicio", "producto"].includes(tipo)) update.tipo = tipo
     if (estado !== undefined && ["activo", "inactivo"].includes(estado)) update.estado = estado
     if (files.length > 0) {
-      const productoActual = await Producto.findOne({
-        _id: id,
-        $or: [{ tenantId: req.tenantId }, { tenantId: null }, { tenantId: { $exists: false } }],
-      })
+      const productoActual = await Producto.findOne({ _id: id, tenantId: req.tenantId })
         .select("imagenes")
         .lean()
       const imagenesExistentes = Array.isArray(productoActual?.imagenes)
@@ -211,7 +205,7 @@ export async function actualizar(req, res) {
     if (caracteristicas !== undefined) update.caracteristicas = parseJsonArray(caracteristicas)
 
     const producto = await Producto.findOneAndUpdate(
-      { _id: id, $or: [{ tenantId: req.tenantId }, { tenantId: null }, { tenantId: { $exists: false } }] },
+      { _id: id, tenantId: req.tenantId },
       update,
       { new: true }
     )
@@ -230,7 +224,7 @@ export async function inactivar(req, res) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
     const producto = await Producto.findOneAndUpdate(
-      { _id: id, $or: [{ tenantId: req.tenantId }, { tenantId: null }, { tenantId: { $exists: false } }] },
+      { _id: id, tenantId: req.tenantId },
       { estado: "inactivo" },
       { new: true }
     )
@@ -249,10 +243,7 @@ export async function obtenerImagen(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
-    const producto = await Producto.findOne({
-      _id: id,
-      $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }],
-    }).select("imagenes")
+    const producto = await Producto.findOne({ _id: id, tenantId }).select("imagenes")
     if (!producto) return res.status(404).json({ error: "Imagen no encontrada" })
     const i = parseInt(index, 10)
     if (Number.isNaN(i) || i < 0 || !Array.isArray(producto.imagenes) || !producto.imagenes[i]) {

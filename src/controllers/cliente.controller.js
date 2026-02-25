@@ -24,7 +24,7 @@ export async function listarTodos(req, res) {
     const tenantId = req.tenantId
     if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { origen, ciudad, busqueda, fechaDesde, fechaHasta } = req.query
-    const filter = { $or: [{ tenantId: tenantId }, { tenantId: null }, { tenantId: { $exists: false } }] }
+    const filter = { tenantId }
 
     if (origen && ["plataforma", "whatsapp"].includes(String(origen).toLowerCase())) {
       filter.origen = String(origen).toLowerCase()
@@ -74,10 +74,7 @@ export async function obtenerUno(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de cliente no válido" })
     }
-    const cliente = await Cliente.findOne({
-      _id: id,
-      $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }],
-    })
+    const cliente = await Cliente.findOne({ _id: id, tenantId })
     if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" })
     res.json(toClienteResponse(cliente))
   } catch (error) {
@@ -199,7 +196,7 @@ export async function actualizar(req, res) {
     }
 
     const cliente = await Cliente.findOneAndUpdate(
-      { _id: id, $or: [{ tenantId: req.tenantId }, { tenantId: null }, { tenantId: { $exists: false } }] },
+      { _id: id, tenantId: req.tenantId },
       update,
       { new: true }
     )
