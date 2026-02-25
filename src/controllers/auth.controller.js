@@ -15,6 +15,7 @@ export async function login(req, res) {
     }
     const user = await User.findOne({ email: emailNorm }).select("+password")
     if (!user) return res.status(401).json({ error: "Credenciales inválidas" })
+    if (user.activo === false) return res.status(401).json({ error: "Cuenta deshabilitada. Contacta al administrador." })
     const ok = await bcrypt.compare(password, user.password)
     if (!ok) return res.status(401).json({ error: "Credenciales inválidas" })
     const token = jwt.sign(
@@ -129,6 +130,8 @@ export async function crearTienda(req, res) {
       password: hash,
       nombre: (nombre || "").trim() || nombreTiendaTrim,
       tenantId: tenant._id,
+      activo: true,
+      isOriginalAdmin: true,
     })
     const token = jwt.sign(
       { userId: user._id.toString(), tenantId: user.tenantId.toString() },

@@ -7,6 +7,8 @@ import authRoutes from "./src/routes/auth.routes.js"
 import clienteRoutes from "./src/routes/cliente.routes.js"
 import productoRoutes from "./src/routes/producto.routes.js"
 import audiovisualRoutes from "./src/routes/audiovisual.routes.js"
+import campanaRoutes from "./src/routes/campana.routes.js"
+import userRoutes from "./src/routes/user.routes.js"
 
 // En Vercel las variables se inyectan; en local cargamos .env
 if (process.env.VERCEL !== "1") {
@@ -51,6 +53,8 @@ app.use("/auth", authRoutes)
 app.use("/clientes", requireAuth, clienteRoutes)
 app.use("/productos", requireAuth, productoRoutes)
 app.use("/audiovisual", requireAuth, audiovisualRoutes)
+app.use("/campanas", requireAuth, campanaRoutes)
+app.use("/users", requireAuth, userRoutes)
 
 // Manejo de errores global (evita FUNCTION_INVOCATION_FAILED por errores no capturados)
 app.use((err, req, res, next) => {

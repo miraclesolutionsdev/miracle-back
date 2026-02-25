@@ -15,6 +15,8 @@ const userSchema = new mongoose.Schema(
       ref: "Tenant",
       required: [true, "El tenant es obligatorio"],
     },
+    activo: { type: Boolean, default: true },
+    isOriginalAdmin: { type: Boolean, default: false },
   },
   { timestamps: true, collection: "users" }
 )

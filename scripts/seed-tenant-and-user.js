@@ -43,10 +43,16 @@ async function seed() {
       password: hash,
       nombre: "Admin",
       tenantId: tenant._id,
+      activo: true,
+      isOriginalAdmin: true,
     })
     console.log("Usuario creado:", user.email)
   } else {
     console.log("Usuario ya existe:", user.email)
+    if (!user.isOriginalAdmin) {
+      await User.updateOne({ _id: user._id }, { $set: { isOriginalAdmin: true, activo: true } })
+      console.log("Marcado como administrador original.")
+    }
   }
 
   console.log("\nPuedes iniciar sesión con:")
