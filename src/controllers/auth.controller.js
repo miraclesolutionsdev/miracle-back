@@ -124,6 +124,7 @@ export async function crearTienda(req, res) {
         error: "Ese email ya está registrado en otra tienda. Usa otro email o inicia sesión en la tienda correspondiente.",
       })
     }
+    const count = await User.countDocuments({ tenantId: tenant._id })
     const hash = await bcrypt.hash(password, SALT_ROUNDS)
     const user = await User.create({
       email: emailNorm,
@@ -131,7 +132,7 @@ export async function crearTienda(req, res) {
       nombre: (nombre || "").trim() || nombreTiendaTrim,
       tenantId: tenant._id,
       activo: true,
-      isOriginalAdmin: true,
+      isOriginalAdmin: count === 0,
     })
     const token = jwt.sign(
       { userId: user._id.toString(), tenantId: user.tenantId.toString() },
@@ -146,6 +147,116 @@ export async function crearTienda(req, res) {
         nombre: user.nombre,
         tenantId: user.tenantId.toString(),
         tenantNombre: tenant.nombre,
+      },
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+}
+
+export async function obtenerPerfil(req, res) {
+  try {
+    const userId = req.userId
+    const tenantId = req.tenantId
+    if (!userId || !tenantId) return res.status(401).json({ error: "No autorizado" })
+    const user = await User.findById(userId).select("-password").lean()
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" })
+    const tenant = await Tenant.findById(tenantId).lean()
+    res.json({
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        nombre: user.nombre ?? "",
+        tenantId: user.tenantId.toString(),
+        tenantNombre: tenant?.nombre ?? "",
+      },
+      tenant: {
+        id: tenant?._id?.toString(),
+        nombre: tenant?.nombre ?? "",
+      },
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+}
+
+export async function actualizarPerfil(req, res) {
+  try {
+    const userId = req.userId
+    const tenantId = req.tenantId
+    if (!userId || !tenantId) return res.status(401).json({ error: "No autorizado" })
+    const { email, nombre } = req.body
+    const emailNorm = (email ?? "").trim().toLowerCase()
+    const updates = {}
+    if (emailNorm) {
+      const exists = await User.findOne({
+        email: emailNorm,
+        tenantId,
+        _id: { $ne: userId },
+      })
+      if (exists) return res.status(409).json({ error: "Ya existe un usuario con ese email en esta tienda" })
+      updates.email = emailNorm
+    }
+    if (nombre !== undefined) updates.nombre = (nombre ?? "").trim()
+    const user = await User.findByIdAndUpdate(userId, updates, { new: true })
+      .select("-password")
+      .lean()
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" })
+    const tenant = await Tenant.findById(tenantId).lean()
+    res.json({
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        nombre: user.nombre ?? "",
+        tenantId: user.tenantId.toString(),
+        tenantNombre: tenant?.nombre ?? "",
+      },
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+}
+
+export async function cambiarPassword(req, res) {
+  try {
+    const userId = req.userId
+    if (!userId) return res.status(401).json({ error: "No autorizado" })
+    const { contraseñaActual, nuevaContraseña } = req.body
+    if (!contraseñaActual || !nuevaContraseña) {
+      return res.status(400).json({ error: "Contraseña actual y nueva son obligatorias" })
+    }
+    if (nuevaContraseña.length < 6) {
+      return res.status(400).json({ error: "La nueva contraseña debe tener al menos 6 caracteres" })
+    }
+    const user = await User.findById(userId).select("+password")
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" })
+    const ok = await bcrypt.compare(contraseñaActual, user.password)
+    if (!ok) return res.status(401).json({ error: "Contraseña actual incorrecta" })
+    const hash = await bcrypt.hash(nuevaContraseña, SALT_ROUNDS)
+    await User.updateOne({ _id: userId }, { password: hash })
+    res.json({ ok: true, message: "Contraseña actualizada" })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+}
+
+export async function actualizarTenant(req, res) {
+  try {
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
+    const { nombre } = req.body
+    const nombreTrim = (nombre ?? "").trim()
+    if (!nombreTrim) return res.status(400).json({ error: "El nombre de la tienda es obligatorio" })
+    const tenant = await Tenant.findByIdAndUpdate(
+      tenantId,
+      { nombre: nombreTrim },
+      { new: true }
+    ).lean()
+    if (!tenant) return res.status(404).json({ error: "Tienda no encontrada" })
+    res.json({
+      tenant: {
+        id: tenant._id.toString(),
+        nombre: tenant.nombre,
       },
     })
   } catch (error) {
