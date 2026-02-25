@@ -132,8 +132,6 @@ export async function crear(req, res) {
       return res.status(201).json(toClienteResponse(cliente))
     }
 
-    const tenantId = req.tenantId
-    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const nom = (nombreEmpresa || "").trim()
     const ced = (cedulaNit ?? "").trim()
     const em = (email || "").trim()
