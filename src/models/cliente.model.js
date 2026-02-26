@@ -2,24 +2,26 @@ import mongoose from "mongoose"
 
 const clienteSchema = new mongoose.Schema(
   {
-    tenantId: { type: mongoose.Schema.Types.ObjectId, ref: "Tenant", default: null },
     nombreEmpresa: {
       type: String,
       required: [true, "El nombre o empresa es obligatorio"],
       trim: true,
     },
     cedulaNit: { type: String, trim: true, default: "" },
-    email: { type: String, trim: true, default: "" },
+    email: {
+      type: String,
+      required: [true, "El email es obligatorio"],
+      trim: true,
+    },
     whatsapp: { type: String, trim: true, default: "" },
     direccion: { type: String, trim: true, default: "" },
     ciudadBarrio: { type: String, trim: true, default: "" },
-    origen: {
+    estado: {
       type: String,
-      enum: ["plataforma", "whatsapp"],
-      default: "plataforma",
+      enum: { values: ["activo", "pausado", "inactivo"], message: "Estado no válido" },
+      default: "activo",
     },
-    productoInteres: { type: String, trim: true, default: "" },
-    notas: { type: String, trim: true, default: "" },
+    miracleCoins: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 )

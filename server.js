@@ -1,19 +1,11 @@
-import dotenv from "dotenv"
+import "dotenv/config"
 import express from "express"
 import cors from "cors"
 import { conectarDB } from "./src/config/db.js"
-import { requireAuth } from "./src/middleware/auth.middleware.js"
-import authRoutes from "./src/routes/auth.routes.js"
+import Usuario from "./src/models/usuario.model.js"
 import clienteRoutes from "./src/routes/cliente.routes.js"
 import productoRoutes from "./src/routes/producto.routes.js"
 import audiovisualRoutes from "./src/routes/audiovisual.routes.js"
-import campanaRoutes from "./src/routes/campana.routes.js"
-import userRoutes from "./src/routes/user.routes.js"
-
-// En Vercel las variables se inyectan; en local cargamos .env
-if (process.env.VERCEL !== "1") {
-  dotenv.config()
-}
 
 const app = express()
 
@@ -30,9 +22,8 @@ app.use(cors(corsOptions))
 app.use(express.json())
 
 // Asegurar conexión a MongoDB antes de rutas que usan la DB
-// OPTIONS (preflight CORS) no requiere DB: dejar que cors() responda con 200 y cabeceras
 app.use(async (req, res, next) => {
-  if (req.method === "OPTIONS" || req.path === "/" || req.path === "/favicon.ico") return next()
+  if (req.path === "/" || req.path === "/favicon.ico") return next()
   try {
     await conectarDB()
     next()
@@ -46,33 +37,56 @@ app.get("/", (req, res) => {
   res.send("🚀 Backend Express funcionando")
 })
 
-// Auth (login, register) - sin protección
-app.use("/auth", authRoutes)
-
-// Rutas de datos protegidas por JWT o API key
-app.use("/clientes", requireAuth, clienteRoutes)
-app.use("/productos", requireAuth, productoRoutes)
-app.use("/audiovisual", requireAuth, audiovisualRoutes)
-app.use("/campanas", requireAuth, campanaRoutes)
-app.use("/users", requireAuth, userRoutes)
-
-// Manejo de errores global (evita FUNCTION_INVOCATION_FAILED por errores no capturados)
-app.use((err, req, res, next) => {
-  console.error("Error no capturado:", err)
-  if (!res.headersSent) {
-    res.status(500).json({ error: err.message || "Error interno del servidor" })
+// POST - Crear usuario
+app.post("/usuarios", async (req, res) => {
+  try {
+    const { nombre, contraseña, tel } = req.body
+    if (!nombre || !contraseña || !tel) {
+      return res.status(400).json({ error: "Faltan campos: nombre, contraseña, tel" })
+    }
+    const usuario = await Usuario.create({ nombre, contraseña, tel })
+    res.status(201).json({
+      id: usuario._id,
+      nombre: usuario.nombre,
+      contraseña: usuario.contraseña,
+      tel: usuario.tel
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
   }
 })
 
+// GET - Listar todos los usuarios
+app.get("/usuarios", async (req, res) => {
+  try {
+    const usuarios = await Usuario.find({}).sort({ createdAt: -1 })
+    res.json(usuarios.map(u => ({
+      id: u._id,
+      nombre: u.nombre,
+      contraseña: u.contraseña,
+      tel: u.tel
+    })))
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// CRUD Clientes
+app.use("/clientes", clienteRoutes)
+
+// CRUD Productos
+app.use("/productos", productoRoutes)
+
+// Audiovisual
+app.use("/audiovisual", audiovisualRoutes)
+
 // Puerto - solo para desarrollo local (Vercel usa serverless)
 const PORT = process.env.PORT || 3000
+
 if (process.env.VERCEL !== "1") {
   app.listen(PORT, () => {
     console.log(`🔥 Servidor escuchando en http://localhost:${PORT}`)
   })
 }
 
-// Export para Vercel serverless: handler explícito que recibe (req, res)
-export default function handler(req, res) {
-  return app(req, res)
-}
+export default app
