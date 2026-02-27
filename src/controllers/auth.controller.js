@@ -170,10 +170,25 @@ export async function obtenerPerfil(req, res) {
         tenantId: user.tenantId.toString(),
         tenantNombre: tenant?.nombre ?? "",
       },
-      tenant: {
-        id: tenant?._id?.toString(),
-        nombre: tenant?.nombre ?? "",
-      },
+      tenant: tenant
+        ? {
+            id: tenant._id.toString(),
+            nombre: tenant.nombre ?? "",
+            logoUrl: tenant.logoUrl ?? "",
+            descripcion: tenant.descripcion ?? "",
+            eslogan: tenant.eslogan ?? "",
+            productosPrincipales: Array.isArray(tenant.productosPrincipales)
+              ? tenant.productosPrincipales
+              : [],
+          }
+        : {
+            id: "",
+            nombre: "",
+            logoUrl: "",
+            descripcion: "",
+            eslogan: "",
+            productosPrincipales: [],
+          },
     })
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -244,19 +259,53 @@ export async function actualizarTenant(req, res) {
   try {
     const tenantId = req.tenantId
     if (!tenantId) return res.status(401).json({ error: "No autorizado" })
-    const { nombre } = req.body
-    const nombreTrim = (nombre ?? "").trim()
-    if (!nombreTrim) return res.status(400).json({ error: "El nombre de la tienda es obligatorio" })
-    const tenant = await Tenant.findByIdAndUpdate(
-      tenantId,
-      { nombre: nombreTrim },
-      { new: true }
-    ).lean()
+    const {
+      nombre,
+      logoUrl,
+      descripcion,
+      eslogan,
+      productosPrincipales,
+    } = req.body
+
+    const updates = {}
+    if (nombre !== undefined) {
+      const nombreTrim = (nombre ?? "").trim()
+      if (!nombreTrim) {
+        return res.status(400).json({ error: "El nombre de la tienda es obligatorio" })
+      }
+      updates.nombre = nombreTrim
+    }
+    if (logoUrl !== undefined) {
+      updates.logoUrl = (logoUrl ?? "").trim()
+    }
+    if (descripcion !== undefined) {
+      updates.descripcion = (descripcion ?? "").trim()
+    }
+    if (eslogan !== undefined) {
+      updates.eslogan = (eslogan ?? "").trim()
+    }
+    if (productosPrincipales !== undefined) {
+      updates.productosPrincipales = Array.isArray(productosPrincipales)
+        ? productosPrincipales.map((p) => (p ?? "").toString().trim()).filter(Boolean)
+        : []
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: "No hay cambios para actualizar" })
+    }
+
+    const tenant = await Tenant.findByIdAndUpdate(tenantId, updates, { new: true }).lean()
     if (!tenant) return res.status(404).json({ error: "Tienda no encontrada" })
     res.json({
       tenant: {
         id: tenant._id.toString(),
         nombre: tenant.nombre,
+        logoUrl: tenant.logoUrl ?? "",
+        descripcion: tenant.descripcion ?? "",
+        eslogan: tenant.eslogan ?? "",
+        productosPrincipales: Array.isArray(tenant.productosPrincipales)
+          ? tenant.productosPrincipales
+          : [],
       },
     })
   } catch (error) {
