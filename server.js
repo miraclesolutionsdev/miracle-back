@@ -6,6 +6,9 @@ import Usuario from "./src/models/usuario.model.js"
 import clienteRoutes from "./src/routes/cliente.routes.js"
 import productoRoutes from "./src/routes/producto.routes.js"
 import audiovisualRoutes from "./src/routes/audiovisual.routes.js"
+import authRoutes from "./src/routes/auth.routes.js"
+import userRoutes from "./src/routes/user.routes.js"
+import campanaRoutes from "./src/routes/campana.routes.js"
 
 const app = express()
 
@@ -71,6 +74,10 @@ app.get("/usuarios", async (req, res) => {
   }
 })
 
+// Auth & usuarios (multi-tenant)
+app.use("/auth", authRoutes)
+app.use("/users", userRoutes)
+
 // CRUD Clientes
 app.use("/clientes", clienteRoutes)
 
@@ -79,6 +86,9 @@ app.use("/productos", productoRoutes)
 
 // Audiovisual
 app.use("/audiovisual", audiovisualRoutes)
+
+// Campañas
+app.use("/campanas", campanaRoutes)
 
 // Puerto - solo para desarrollo local (Vercel usa serverless)
 const PORT = process.env.PORT || 3000
