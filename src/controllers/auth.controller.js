@@ -178,6 +178,7 @@ export async function obtenerPerfil(req, res) {
             logoUrl: tenant.logoUrl ?? "",
             descripcion: tenant.descripcion ?? "",
             eslogan: tenant.eslogan ?? "",
+            categoria: tenant.categoria ?? "",
             productosPrincipales: Array.isArray(tenant.productosPrincipales)
               ? tenant.productosPrincipales
               : [],
@@ -188,6 +189,7 @@ export async function obtenerPerfil(req, res) {
             logoUrl: "",
             descripcion: "",
             eslogan: "",
+            categoria: "",
             productosPrincipales: [],
           },
     })
@@ -265,6 +267,7 @@ export async function actualizarTenant(req, res) {
       logoUrl,
       descripcion,
       eslogan,
+      categoria,
       productosPrincipales,
     } = req.body
 
@@ -284,6 +287,9 @@ export async function actualizarTenant(req, res) {
     }
     if (eslogan !== undefined) {
       updates.eslogan = (eslogan ?? "").trim()
+    }
+    if (categoria !== undefined) {
+      updates.categoria = (categoria ?? "").trim()
     }
     if (productosPrincipales !== undefined) {
       updates.productosPrincipales = Array.isArray(productosPrincipales)

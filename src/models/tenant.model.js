@@ -8,6 +8,7 @@ const tenantSchema = new mongoose.Schema(
     logoUrl: { type: String, trim: true, default: "" },
     descripcion: { type: String, trim: true, default: "" },
     eslogan: { type: String, trim: true, default: "" },
+    categoria: { type: String, trim: true, default: "" },
     productosPrincipales: { type: [String], default: [] },
   },
   { timestamps: true, collection: "tenants" }
