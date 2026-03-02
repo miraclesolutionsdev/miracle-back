@@ -2,6 +2,7 @@ import User from "../models/user.model.js"
 import Tenant from "../models/tenant.model.js"
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
+import { obtenerPresignedPutLogo } from "../services/s3.service.js"
 
 const JWT_SECRET = process.env.JWT_SECRET || "tu-clave-secreta-cambiar-en-produccion"
 const SALT_ROUNDS = 10
@@ -308,6 +309,24 @@ export async function actualizarTenant(req, res) {
           : [],
       },
     })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+}
+
+/**
+ * Devuelve una URL firmada para subir el logo del tenant actual a S3.
+ * No modifica la BD; el frontend debe luego llamar a actualizarTenant con logoUrl = publicUrl.
+ */
+export async function obtenerPresignedLogoTenant(req, res) {
+  try {
+    const tenantId = req.tenantId
+    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
+    const { filename, contentType } = req.body || {}
+    const name = (filename || "").trim() || "logo.png"
+    const type = (contentType || "").trim() || "image/png"
+    const { uploadUrl, key, publicUrl } = await obtenerPresignedPutLogo(tenantId, name, type)
+    res.json({ uploadUrl, key, publicUrl })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }

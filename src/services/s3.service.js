@@ -104,6 +104,17 @@ export async function subirArchivoAudiovisualEvitandoDuplicado(buffer, contentTy
 }
 
 /**
+ * Genera una key de logo para un tenant específico.
+ * Ej: tenants/{tenantId}/logo.png
+ */
+function keyLogoTenant(tenantId, originalname) {
+  const base = (originalname || "").replace(/^.*[/\\]/, "").trim().toLowerCase() || "logo"
+  const ext = base.includes(".") ? base.slice(base.lastIndexOf(".")) : ".png"
+  const sanitizedTenant = (tenantId || "tenant").toString().replace(/[^a-z0-9._-]/gi, "_")
+  return `tenants/${sanitizedTenant}/logo${ext}`
+}
+
+/**
  * Genera una key única para audiovisuales (evita sobrescribir).
  */
 function keyAudiovisualUnica(originalname) {
@@ -126,6 +137,23 @@ export async function obtenerPresignedPutAudiovisual(originalname, contentType) 
     Bucket: bucket,
     Key: key,
     ContentType: contentType || "application/octet-stream",
+  })
+  const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 })
+  const publicUrl = `${getBaseUrl()}/${key}`
+  return { uploadUrl, key, publicUrl }
+}
+
+/**
+ * Obtiene una URL firmada (presigned) para subir el logo de un tenant.
+ * La key se normaliza a: tenants/{tenantId}/logo.{ext}
+ */
+export async function obtenerPresignedPutLogo(tenantId, originalname, contentType) {
+  if (!bucket) throw new Error("S3_BUCKET no está configurado en .env")
+  const key = keyLogoTenant(tenantId, originalname)
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType || "image/png",
   })
   const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 })
   const publicUrl = `${getBaseUrl()}/${key}`
