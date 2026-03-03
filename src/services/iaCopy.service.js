@@ -8,35 +8,37 @@ if (!OPENAI_API_KEY) {
   )
 }
 
-// Prompt del agente para generar ángulos y copys TOF/MOF/BOF
+// Prompt del agente para generar ángulos y copys por producto (agnóstico del tipo de producto)
 const SYSTEM_PROMPT = `
 Eres un copywriter experto en performance marketing y ventas para negocios digitales.
-Tu trabajo es generar **ángulos de venta y copys** para anuncios y contenidos enfocados en vender cada producto.
+Tu trabajo es generar ÁNGULOS DE VENTA y COPYS para anuncios y contenidos enfocados en vender un producto o servicio específico.
 
-Siempre trabajas según el funnel de marketing:
-- TOF (Top of Funnel): gente que no conoce la marca ni el producto.
-- MOF (Middle of Funnel): gente que ya mostró interés o interactuó.
-- BOF (Bottom of Funnel): gente casi lista para comprar (leads calientes).
+Recibirás SIEMPRE, en el mensaje del usuario, un JSON con la información del producto, por ejemplo:
 
-Contexto específico de Miracle Solutions:
-- Muchos productos serán planes de Miracle Solutions:
-  - Plan Spark: plan de inicio para emprendedores que están empezando a vender servicios online y necesitan su primera tienda y presencia profesional.
-  - Plan Luch: plan intermedio para negocios que ya venden y quieren crecer ordenando su tienda, clientes y campañas.
-  - Plan Miracle: plan completo para negocios y agencias que quieren escalar fuerte, profesionalizar campañas y métricas.
-- Cuando el producto sea uno de estos planes, adapta los ángulos y copys a la etapa del negocio (inicio, crecimiento, escala).
+{
+  "nombre": "Nombre del producto",
+  "categoria": "Categoría general (ej. zapatillas, software, servicio de coaching, etc.)",
+  "publico_objetivo": "Descripción del público ideal",
+  "beneficios_clave": ["beneficio 1", "beneficio 2", "beneficio 3"],
+  "objetivo": "Objetivo de marketing / canal principal (opcional)"
+}
 
-Para cada producto que recibas deberás:
-1. Entender qué problema resuelve, a quién va dirigido y qué beneficios tiene.
-2. Diseñar diferentes ángulos de venta (formas de contar la misma oferta pensando en distintos dolores/deseos).
-3. Generar exactamente:
-   - 2 copys para TOF,
-   - 2 copys para MOF,
-   - 1 copy para BOF,
-   todos con ángulos distintos pero coherentes con el producto.
-4. Escribir siempre con foco en vender, pero sin ser agresivo ni engañoso. Claridad, beneficios, resultados y llamado a la acción.
-5. Responder SIEMPRE en español latino, usando un tono profesional, claro y cercano.
+No inventes datos del producto: usa SOLO lo que venga en ese JSON.
 
-Devuelves SIEMPRE la respuesta en formato JSON ESTRICTO, siguiendo esta estructura:
+Debes trabajar generando ÁNGULOS y, dentro de cada ángulo, varios copys:
+
+- Un ÁNGULO es una forma específica de contar la oferta (ej. "Dolor de X", "Resultados rápidos", "Oferta limitada", "Autoridad/experiencia", "Prueba social", etc.).
+- Un COPY es una pieza concreta de texto (título + cuerpo + CTA) lista para usarse en un anuncio o contenido.
+
+PARA CADA PRODUCTO que recibas:
+
+1. Entiende qué problema resuelve, a quién va dirigido y qué beneficios tiene.
+2. Diseña EXACTAMENTE 5 ÁNGULOS DISTINTOS de venta.
+3. Para CADA ÁNGULO, genera EXACTAMENTE 5 COPYS diferentes.
+4. Escribe SIEMPRE en español latino, con tono profesional, claro y cercano.
+5. Cada copy debe tener un hook fuerte, explicar brevemente el beneficio y terminar con un CTA claro.
+
+FORMATO DE RESPUESTA (JSON ESTRICTO):
 
 {
   "producto": {
@@ -45,25 +47,31 @@ Devuelves SIEMPRE la respuesta en formato JSON ESTRICTO, siguiendo esta estructu
     "publico_objetivo": "...",
     "beneficios_clave": ["...", "..."]
   },
-  "copys": [
+  "angulos": [
     {
-      "etapa": "TOF" | "MOF" | "BOF",
-      "angulo": "Nombre breve del ángulo",
-      "idea_central": "Resumen del enfoque de este ángulo en 1–2 frases.",
-      "copy": {
-        "titulo": "Título/hook principal",
-        "cuerpo": "Texto principal del anuncio o pieza",
-        "cta": "Llamado a la acción sugerido"
-      },
-      "sugerencia_formato": "Ej: anuncio feed Instagram, historia vertical, email corto, landing hero, etc."
+      "nombre": "Nombre del ángulo 1",
+      "descripcion": "Explicación breve del enfoque de este ángulo (1–2 frases).",
+      "copys": [
+        {
+          "idea_central": "Resumen breve del copy (1–2 frases).",
+          "copy": {
+            "titulo": "Título / hook principal",
+            "cuerpo": "Texto principal del anuncio o pieza (máx ~220 caracteres, orientado a ventas).",
+            "cta": "Llamado a la acción sugerido (ej. 'Conoce más', 'Compra ahora', 'Agenda tu demo')."
+          },
+          "sugerencia_formato": "Ej: anuncio feed Instagram, story vertical, anuncio Google, email corto, landing hero, etc."
+        }
+      ]
     }
   ]
 }
 
-Reglas importantes:
-- Genera exactamente 5 elementos en "copys": 2 con "etapa": "TOF", 2 con "etapa": "MOF" y 1 con "etapa": "BOF".
-- Cada "angulo" debe ser distinto.
-- No agregues texto fuera del JSON.
+REGLAS IMPORTANTES:
+- Genera EXACTAMENTE 5 elementos en "angulos".
+- Dentro de CADA "angulo", genera EXACTAMENTE 5 elementos en "copys".
+- Todos los "angulos" deben ser claramente diferentes entre sí.
+- Los copys dentro de un mismo ángulo deben ser variaciones del mismo enfoque (cambiando el wording, el CTA, el punto de énfasis, etc.).
+- NO agregues texto fuera del JSON ni comentarios adicionales.
 `
 
 function ensureJson(content) {
@@ -120,19 +128,30 @@ export async function generarCopysParaProducto(producto, historial = []) {
   try {
     const parsed = JSON.parse(jsonText)
 
-    // Validación suave de estructura de copys
-    if (Array.isArray(parsed.copys)) {
-      const tof = parsed.copys.filter((c) => c.etapa === "TOF").length
-      const mof = parsed.copys.filter((c) => c.etapa === "MOF").length
-      const bof = parsed.copys.filter((c) => c.etapa === "BOF").length
-      if (tof !== 2 || mof !== 2 || bof !== 1) {
+    // Validación suave de estructura de ángulos y copys
+    if (Array.isArray(parsed.angulos)) {
+      if (parsed.angulos.length !== 5) {
         console.warn(
-          "[iaCopy.service] Estructura de etapas inesperada en copys:",
-          JSON.stringify({ tof, mof, bof }),
+          "[iaCopy.service] Cantidad de ángulos inesperada:",
+          parsed.angulos.length,
         )
       }
+      parsed.angulos.forEach((a, idx) => {
+        if (!Array.isArray(a.copys)) {
+          console.warn(
+            `[iaCopy.service] El ángulo ${idx} no tiene 'copys' como array.`,
+          )
+          return
+        }
+        if (a.copys.length !== 5) {
+          console.warn(
+            `[iaCopy.service] Cantidad de copys inesperada en ángulo ${idx}:`,
+            a.copys.length,
+          )
+        }
+      })
     } else {
-      console.warn("[iaCopy.service] 'copys' no es un array en la respuesta de la IA")
+      console.warn("[iaCopy.service] 'angulos' no es un array en la respuesta de la IA")
     }
 
     return parsed
