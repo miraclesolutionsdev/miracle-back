@@ -240,3 +240,127 @@ Reglas:
   }
 }
 
+// 3) Generar guion y copy audiovisual a partir de una imagen + copy base
+export async function generarGuionDesdeImagen(payload, historial = []) {
+  if (!OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY no configurada en el backend")
+  }
+
+  const SYSTEM_PROMPT_IMAGEN = `
+Eres un creativo senior de contenido audiovisual para redes sociales (TikTok, Reels, Shorts, Ads).
+
+Tu tarea: a partir de una PIEZA GRÁFICA (imagen) y del copy base asociado,
+debes proponer un guion corto y copy para un VIDEO publicitario.
+
+Recibirás un JSON como:
+{
+  "producto": { "nombre": "...", "categoria": "...", "descripcion": "..." },
+  "angulo": { "nombre": "...", "descripcion": "..." },
+  "copy_base": {
+    "etapa": "TOF|MOF|BOF",
+    "titulo": "...",
+    "cuerpo": "...",
+    "cta": "...",
+    "idea_central": "..."
+  },
+  "imagen": {
+    "url": "https://...",
+    "descripcion_manual": "Breve descripción textual de lo que muestra la imagen (opcional)"
+  },
+  "contexto_pieza": {
+    "tipo": "video" | "story" | "short",
+    "plataforma": "TikTok" | "Reels" | "Meta" | "YouTube",
+    "duracion_objetivo_seg": 30
+  }
+}
+
+NO puedes ver la imagen realmente, pero debes suponer que la imagen representa visualmente
+el ángulo y el copy_base indicados. Usa esa info como referencia visual.
+
+Debes devolver un JSON ESTRICTO con este formato:
+
+{
+  "pieza": {
+    "tipo": "video",
+    "plataforma": "TikTok",
+    "duracion_sugerida": 30
+  },
+  "copy_plataforma": {
+    "titulo": "Título corto para el video",
+    "descripcion": "Descripción optimizada para la plataforma, en español latino, con 1 CTA claro.",
+    "hashtags": ["#ejemplo", "#producto", "#marca"]
+  },
+  "idea_creativa": "Resumen en 2-3 frases de la idea visual del video.",
+  "guion": {
+    "estructura": [
+      { "segundos": "0-3", "descripcion": "..." },
+      { "segundos": "3-10", "descripcion": "..." }
+    ],
+    "texto_sugerido": [
+      "Frase 1 de guion hablado o subtítulos",
+      "Frase 2...",
+      "Frase 3..."
+    ]
+  }
+}
+
+Reglas:
+- Escribe SIEMPRE en español latino, profesional pero cercano.
+- No agregues texto fuera del JSON.
+- Respeta el funnel según etapa (TOF/MOF/BOF) al definir el enfoque.
+`
+
+  const mensajes = [
+    { role: "system", content: SYSTEM_PROMPT_IMAGEN },
+    ...[]
+      .concat(historial || [])
+      .slice(-4)
+      .map((m) => ({
+        role: m.rol === "assistant" ? "assistant" : "user",
+        content: m.contenido,
+      })),
+    {
+      role: "user",
+      content: JSON.stringify(payload),
+    },
+  ]
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      messages: mensajes,
+      temperature: 0.9,
+    }),
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(
+      `Error al llamar a OpenAI (guion imagen): ${response.status} - ${errText}`,
+    )
+  }
+
+  const data = await response.json()
+  const content = data.choices?.[0]?.message?.content || "{}"
+  const jsonText = ensureJson(content)
+
+  try {
+    return JSON.parse(jsonText)
+  } catch (e) {
+    console.error(
+      "[iaCopy.service] No se pudo parsear JSON de la IA (guion imagen):",
+      e,
+      jsonText,
+    )
+    throw new Error(
+      "La respuesta de la IA (guion imagen) no tiene un formato JSON válido.",
+    )
+  }
+}
+
+
