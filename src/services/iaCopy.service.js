@@ -8,38 +8,37 @@ if (!OPENAI_API_KEY) {
   )
 }
 
-// Prompt del agente para generar ángulos y copys por producto (agnóstico del tipo de producto)
-const SYSTEM_PROMPT = `
-Eres un copywriter experto en performance marketing y ventas para negocios digitales.
-Tu trabajo es generar ÁNGULOS DE VENTA y COPYS para anuncios y contenidos enfocados en vender un producto o servicio específico.
+function ensureJson(content) {
+  const trimmed = content.trim()
+  const codeBlockMatch = trimmed.match(/```(?:json)?([\s\S]*?)```/i)
+  const jsonText = codeBlockMatch ? codeBlockMatch[1].trim() : trimmed
+  return jsonText
+}
 
-Recibirás SIEMPRE, en el mensaje del usuario, un JSON con la información del producto, por ejemplo:
+// 1) Generar SOLO ángulos para un producto
+export async function generarAngulosParaProducto(producto, historial = []) {
+  if (!OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY no configurada en el backend")
+  }
 
+  const SYSTEM_PROMPT_ANGULOS = `
+Eres un copywriter experto en marketing y ventas.
+Tu tarea es generar ÁNGULOS DE VENTA para un producto o servicio específico.
+
+Recibirás un JSON con la información del producto, por ejemplo:
 {
   "nombre": "Nombre del producto",
-  "categoria": "Categoría general (ej. zapatillas, software, servicio de coaching, etc.)",
+  "categoria": "Categoría general (ej. zapatillas, software, servicio, etc.)",
   "publico_objetivo": "Descripción del público ideal",
   "beneficios_clave": ["beneficio 1", "beneficio 2", "beneficio 3"],
   "objetivo": "Objetivo de marketing / canal principal (opcional)"
 }
 
-No inventes datos del producto: usa SOLO lo que venga en ese JSON.
+No inventes datos: usa SOLO lo que venga en ese JSON y tu criterio profesional.
 
-Debes trabajar generando ÁNGULOS y, dentro de cada ángulo, varios copys:
-
-- Un ÁNGULO es una forma específica de contar la oferta (ej. "Dolor de X", "Resultados rápidos", "Oferta limitada", "Autoridad/experiencia", "Prueba social", etc.).
-- Un COPY es una pieza concreta de texto (título + cuerpo + CTA) lista para usarse en un anuncio o contenido.
-
-PARA CADA PRODUCTO que recibas:
-
-1. Entiende qué problema resuelve, a quién va dirigido y qué beneficios tiene.
-2. Diseña EXACTAMENTE 5 ÁNGULOS DISTINTOS de venta.
-3. Para CADA ÁNGULO, genera EXACTAMENTE 5 COPYS diferentes.
-4. Escribe SIEMPRE en español latino, con tono profesional, claro y cercano.
-5. Cada copy debe tener un hook fuerte, explicar brevemente el beneficio y terminar con un CTA claro.
+Debes devolver EXACTAMENTE 5 ángulos de venta, todos claramente distintos entre sí.
 
 FORMATO DE RESPUESTA (JSON ESTRICTO):
-
 {
   "producto": {
     "nombre": "...",
@@ -49,50 +48,23 @@ FORMATO DE RESPUESTA (JSON ESTRICTO):
   },
   "angulos": [
     {
-      "nombre": "Nombre del ángulo 1",
-      "descripcion": "Explicación breve del enfoque de este ángulo (1–2 frases).",
-      "copys": [
-        {
-          "idea_central": "Resumen breve del copy (1–2 frases).",
-          "copy": {
-            "titulo": "Título / hook principal",
-            "cuerpo": "Texto principal del anuncio o pieza (máx ~220 caracteres, orientado a ventas).",
-            "cta": "Llamado a la acción sugerido (ej. 'Conoce más', 'Compra ahora', 'Agenda tu demo')."
-          },
-          "sugerencia_formato": "Ej: anuncio feed Instagram, story vertical, anuncio Google, email corto, landing hero, etc."
-        }
-      ]
+      "nombre": "Nombre breve del ángulo",
+      "descripcion": "Explicación del enfoque en 1–2 frases."
     }
   ]
 }
 
-REGLAS IMPORTANTES:
+Reglas:
 - Genera EXACTAMENTE 5 elementos en "angulos".
-- Dentro de CADA "angulo", genera EXACTAMENTE 5 elementos en "copys".
-- Todos los "angulos" deben ser claramente diferentes entre sí.
-- Los copys dentro de un mismo ángulo deben ser variaciones del mismo enfoque (cambiando el wording, el CTA, el punto de énfasis, etc.).
-- NO agregues texto fuera del JSON ni comentarios adicionales.
+- No generes copys en este modo.
+- No agregues texto fuera del JSON ni comentarios adicionales.
 `
 
-function ensureJson(content) {
-  // A veces los modelos envuelven el JSON en ```; intentamos extraerlo.
-  const trimmed = content.trim()
-  const codeBlockMatch = trimmed.match(/```(?:json)?([\s\S]*?)```/i)
-  const jsonText = codeBlockMatch ? codeBlockMatch[1].trim() : trimmed
-  return jsonText
-}
-
-export async function generarCopysParaProducto(producto, historial = []) {
-  if (!OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY no configurada en el backend")
-  }
-
   const mensajes = [
-    { role: "system", content: SYSTEM_PROMPT },
-    // historial opcional [{ rol: 'user'|'assistant', contenido: '...' }]
+    { role: "system", content: SYSTEM_PROMPT_ANGULOS },
     ...[]
       .concat(historial || [])
-      .slice(-6) // solo los últimos mensajes
+      .slice(-6)
       .map((m) => ({
         role: m.rol === "assistant" ? "assistant" : "user",
         content: m.contenido,
@@ -112,13 +84,13 @@ export async function generarCopysParaProducto(producto, historial = []) {
     body: JSON.stringify({
       model: "gpt-4.1-mini",
       messages: mensajes,
-      temperature: 0.9,
+      temperature: 0.8,
     }),
   })
 
   if (!response.ok) {
     const errText = await response.text()
-    throw new Error(`Error al llamar a OpenAI: ${response.status} - ${errText}`)
+    throw new Error(`Error al llamar a OpenAI (ángulos): ${response.status} - ${errText}`)
   }
 
   const data = await response.json()
@@ -128,36 +100,143 @@ export async function generarCopysParaProducto(producto, historial = []) {
   try {
     const parsed = JSON.parse(jsonText)
 
-    // Validación suave de estructura de ángulos y copys
-    if (Array.isArray(parsed.angulos)) {
-      if (parsed.angulos.length !== 5) {
-        console.warn(
-          "[iaCopy.service] Cantidad de ángulos inesperada:",
-          parsed.angulos.length,
-        )
-      }
-      parsed.angulos.forEach((a, idx) => {
-        if (!Array.isArray(a.copys)) {
-          console.warn(
-            `[iaCopy.service] El ángulo ${idx} no tiene 'copys' como array.`,
-          )
-          return
-        }
-        if (a.copys.length !== 5) {
-          console.warn(
-            `[iaCopy.service] Cantidad de copys inesperada en ángulo ${idx}:`,
-            a.copys.length,
-          )
-        }
-      })
-    } else {
-      console.warn("[iaCopy.service] 'angulos' no es un array en la respuesta de la IA")
+    if (!Array.isArray(parsed.angulos)) {
+      console.warn("[iaCopy.service] 'angulos' no es un array en la respuesta de ángulos")
+    } else if (parsed.angulos.length !== 5) {
+      console.warn(
+        "[iaCopy.service] Cantidad de ángulos inesperada (ángulos):",
+        parsed.angulos.length,
+      )
     }
 
     return parsed
   } catch (e) {
-    console.error("[iaCopy.service] No se pudo parsear JSON de la IA:", e, jsonText)
-    throw new Error("La respuesta de la IA no tiene un formato JSON válido.")
+    console.error(
+      "[iaCopy.service] No se pudo parsear JSON de la IA (ángulos):",
+      e,
+      jsonText,
+    )
+    throw new Error("La respuesta de la IA (ángulos) no tiene un formato JSON válido.")
+  }
+}
+
+// 2) Generar COPYS para un ÁNGULO concreto de un producto
+export async function generarCopysParaProducto(producto, angulo, historial = []) {
+  if (!OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY no configurada en el backend")
+  }
+
+  const SYSTEM_PROMPT_COPYS = `
+Eres un copywriter experto en performance marketing.
+Ahora trabajarás SOLO sobre UN ÁNGULO concreto de un producto.
+
+Recibirás un JSON:
+{
+  "producto": { ... },
+  "angulo": {
+    "nombre": "...",
+    "descripcion": "..."
+  }
+}
+
+Debes generar EXACTAMENTE 5 copys distintos para este ángulo, cubriendo el funnel:
+- 2 copys TOF (Top of Funnel)
+- 2 copys MOF (Middle of Funnel)
+- 1 copy BOF (Bottom of Funnel)
+
+FORMATO DE RESPUESTA (JSON ESTRICTO):
+{
+  "producto": { ... },
+  "angulo": {
+    "nombre": "...",
+    "descripcion": "..."
+  },
+  "copys": [
+    {
+      "etapa": "TOF" | "MOF" | "BOF",
+      "idea_central": "Resumen breve (1–2 frases).",
+      "copy": {
+        "titulo": "Título / hook principal",
+        "cuerpo": "Texto principal (máx ~220 caracteres).",
+        "cta": "Llamado a la acción."
+      },
+      "sugerencia_formato": "Ej: anuncio feed, story vertical, anuncio Google, email, etc."
+    }
+  ]
+}
+
+Reglas:
+- Genera EXACTAMENTE 5 elementos en "copys".
+- Asegúrate de que haya 2 TOF, 2 MOF y 1 BOF.
+- Escribe en español latino, tono profesional, claro y cercano.
+- No agregues texto fuera del JSON ni comentarios adicionales.
+`
+
+  const mensajes = [
+    { role: "system", content: SYSTEM_PROMPT_COPYS },
+    ...[]
+      .concat(historial || [])
+      .slice(-6)
+      .map((m) => ({
+        role: m.rol === "assistant" ? "assistant" : "user",
+        content: m.contenido,
+      })),
+    {
+      role: "user",
+      content: JSON.stringify({ producto, angulo }),
+    },
+  ]
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      messages: mensajes,
+      temperature: 0.9,
+    }),
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`Error al llamar a OpenAI (copys): ${response.status} - ${errText}`)
+  }
+
+  const data = await response.json()
+  const content = data.choices?.[0]?.message?.content || "{}"
+  const jsonText = ensureJson(content)
+
+  try {
+    const parsed = JSON.parse(jsonText)
+
+    if (!Array.isArray(parsed.copys)) {
+      console.warn("[iaCopy.service] 'copys' no es un array en la respuesta de copys")
+      return parsed
+    }
+
+    const tof = parsed.copys.filter((c) => c.etapa === "TOF").length
+    const mof = parsed.copys.filter((c) => c.etapa === "MOF").length
+    const bof = parsed.copys.filter((c) => c.etapa === "BOF").length
+
+    if (tof !== 2 || mof !== 2 || bof !== 1) {
+      console.warn("[iaCopy.service] Estructura de funnel inesperada:", {
+        tof,
+        mof,
+        bof,
+      })
+    }
+
+    return parsed
+  } catch (e) {
+    console.error(
+      "[iaCopy.service] No se pudo parsear JSON de la IA (copys):",
+      e,
+      jsonText,
+    )
+    throw new Error("La respuesta de la IA (copys) no tiene un formato JSON válido.")
   }
 }
 

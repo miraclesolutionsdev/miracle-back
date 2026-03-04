@@ -1,11 +1,14 @@
 import { Router } from "express"
 import { requireAuth } from "../middleware/auth.middleware.js"
-import { generarCopysParaProducto } from "../services/iaCopy.service.js"
+import {
+  generarAngulosParaProducto,
+  generarCopysParaProducto,
+} from "../services/iaCopy.service.js"
 
 const router = Router()
 
-// Genera ángulos y copys (TOF/MOF/BOF) para un producto dado
-router.post("/copys", requireAuth, async (req, res) => {
+// Genera SOLO ángulos para un producto
+router.post("/angulos", requireAuth, async (req, res) => {
   try {
     const { producto, historial = [] } = req.body
 
@@ -15,7 +18,32 @@ router.post("/copys", requireAuth, async (req, res) => {
         .json({ error: "Faltan datos del producto. Se requiere al menos 'nombre'." })
     }
 
-    const resultado = await generarCopysParaProducto(producto, historial)
+    const resultado = await generarAngulosParaProducto(producto, historial)
+    res.json(resultado)
+  } catch (error) {
+    console.error("[ia.routes] Error al generar ángulos:", error)
+    res.status(500).json({ error: "No se pudieron generar los ángulos con la IA." })
+  }
+})
+
+// Genera copys (TOF/MOF/BOF) para un ÁNGULO concreto de un producto
+router.post("/copys", requireAuth, async (req, res) => {
+  try {
+    const { producto, angulo, historial = [] } = req.body
+
+    if (!producto || !producto.nombre) {
+      return res
+        .status(400)
+        .json({ error: "Faltan datos del producto. Se requiere al menos 'nombre'." })
+    }
+
+    if (!angulo || !angulo.nombre) {
+      return res
+        .status(400)
+        .json({ error: "Faltan datos del ángulo. Se requiere al menos 'nombre'." })
+    }
+
+    const resultado = await generarCopysParaProducto(producto, angulo, historial)
     res.json(resultado)
   } catch (error) {
     console.error("[ia.routes] Error al generar copys:", error)
