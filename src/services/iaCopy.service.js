@@ -363,4 +363,131 @@ Reglas:
   }
 }
 
+// 4) Generar COPY directo a partir de una IMAGEN (visión)
+export async function generarCopyDesdeImagen(
+  imagenDataUrl,
+  contexto = {},
+  historial = [],
+) {
+  if (!OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY no configurada en el backend")
+  }
+
+  if (!imagenDataUrl) {
+    throw new Error("Falta 'imagenDataUrl' para generar el copy desde la imagen")
+  }
+
+  const SYSTEM_PROMPT_COPY_IMAGEN = `
+Eres un creativo senior de contenido audiovisual y copywriter de performance para redes sociales
+(TikTok, Reels, Shorts y Meta Ads).
+
+Tu tarea: a partir de UNA IMAGEN, debes generar un PAQUETE CREATIVO COMPLETO para un video corto
+de aproximadamente 15–20 segundos y su pieza de anuncio/copy para redes.
+
+Si recibes información adicional del producto o contexto, úsala para afinar el mensaje,
+pero no inventes datos que no se mencionen explícitamente.
+
+FORMATO DE RESPUESTA (JSON ESTRICTO):
+{
+  "hook": "Frase inicial muy llamativa para captar la atención en 1-2 segundos.",
+  "guion_voz": [
+    { "segundos": "0-3", "texto": "Texto de voz en off o diálogo para este tramo." },
+    { "segundos": "3-7", "texto": "..." },
+    { "segundos": "7-12", "texto": "..." },
+    { "segundos": "12-20", "texto": "..." }
+  ],
+  "ideas_visuales": [
+    "Descripción de plano o escena 1 para acompañar el guion.",
+    "Descripción de plano o escena 2...",
+    "..."
+  ],
+  "instrucciones_ia_video": [
+    "Instrucciones concretas para un modelo generador de video (formato, ritmo, tipo de planos, colores, etc.).",
+    "Otra instrucción relevante..."
+  ],
+  "copy_post": {
+    "titulo": "Título o encabezado corto para el anuncio/post.",
+    "cuerpo": "Texto principal descriptivo y persuasivo (equivalente a 15–20 segundos de lectura).",
+    "cta": "Llamado a la acción claro y específico."
+  }
+}
+
+Reglas:
+- Escribe SIEMPRE en español latino, tono profesional pero cercano.
+- Mantén la duración objetivo del guion entre 15 y 20 segundos en total.
+- No agregues texto fuera del JSON ni comentarios adicionales.
+`
+
+  const contextoTexto = contexto && Object.keys(contexto).length
+    ? `Contexto adicional (JSON): ${JSON.stringify(contexto)}`
+    : "Sin contexto adicional. Usa solo lo que veas en la imagen."
+
+  const mensajes = [
+    { role: "system", content: SYSTEM_PROMPT_COPY_IMAGEN },
+    ...[]
+      .concat(historial || [])
+      .slice(-4)
+      .map((m) => ({
+        role: m.rol === "assistant" ? "assistant" : "user",
+        content: m.contenido,
+      })),
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text:
+            "Genera el mejor copy posible para esta imagen siguiendo el formato JSON indicado. " +
+            contextoTexto,
+        },
+        {
+          type: "image_url",
+          image_url: {
+            url: imagenDataUrl,
+          },
+        },
+      ],
+    },
+  ]
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      messages: mensajes,
+      temperature: 0.9,
+    }),
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(
+      `Error al llamar a OpenAI (copy desde imagen): ${response.status} - ${errText}`,
+    )
+  }
+
+  const data = await response.json()
+  const content = data.choices?.[0]?.message?.content || "{}"
+  const jsonText = ensureJson(content)
+
+  try {
+    const parsed = JSON.parse(jsonText)
+    return parsed
+  } catch (e) {
+    console.error(
+      "[iaCopy.service] No se pudo parsear JSON de la IA (copy imagen):",
+      e,
+      jsonText,
+    )
+    throw new Error(
+      "La respuesta de la IA (copy imagen) no tiene un formato JSON válido.",
+    )
+  }
+}
+
+
 

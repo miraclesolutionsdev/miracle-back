@@ -4,6 +4,7 @@ import {
   generarAngulosParaProducto,
   generarCopysParaProducto,
   generarGuionDesdeImagen,
+  generarCopyDesdeImagen,
 } from "../services/iaCopy.service.js"
 
 const router = Router()
@@ -71,6 +72,32 @@ router.post("/guion-imagen", requireAuth, async (req, res) => {
     res
       .status(500)
       .json({ error: "No se pudo generar el guion desde la imagen con la IA." })
+  }
+})
+
+// Genera copy directo a partir de una imagen (visión)
+router.post("/copy-desde-imagen", requireAuth, async (req, res) => {
+  try {
+    const { imagenDataUrl, producto, contexto, historial = [] } = req.body || {}
+
+    if (!imagenDataUrl) {
+      return res.status(400).json({
+        error:
+          "Falta 'imagenDataUrl' en el cuerpo de la petición para generar el copy desde imagen.",
+      })
+    }
+
+    const resultado = await generarCopyDesdeImagen(
+      imagenDataUrl,
+      { producto, contexto },
+      historial,
+    )
+    res.json(resultado)
+  } catch (error) {
+    console.error("[ia.routes] Error al generar copy desde imagen:", error)
+    res
+      .status(500)
+      .json({ error: "No se pudo generar el copy desde la imagen con la IA." })
   }
 })
 
