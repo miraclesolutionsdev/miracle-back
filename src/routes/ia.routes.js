@@ -6,6 +6,7 @@ import {
   generarGuionDesdeImagen,
   generarCopyDesdeImagen,
 } from "../services/iaCopy.service.js"
+import { generarImagenDesdePrompt } from "../services/iaImagen.service.js"
 
 const router = Router()
 
@@ -72,6 +73,27 @@ router.post("/guion-imagen", requireAuth, async (req, res) => {
     res
       .status(500)
       .json({ error: "No se pudo generar el guion desde la imagen con la IA." })
+  }
+})
+
+// Genera imagen a partir de un prompt (Google Imagen / Gemini)
+router.post("/generar-imagen", requireAuth, async (req, res) => {
+  try {
+    const { prompt, aspectRatio = "1:1" } = req.body || {}
+
+    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+      return res.status(400).json({
+        error: "Falta 'prompt' en el cuerpo para generar la imagen.",
+      })
+    }
+
+    const resultado = await generarImagenDesdePrompt(prompt.trim(), aspectRatio)
+    res.json(resultado)
+  } catch (error) {
+    console.error("[ia.routes] Error al generar imagen:", error)
+    res
+      .status(500)
+      .json({ error: error.message || "No se pudo generar la imagen con la IA." })
   }
 })
 
