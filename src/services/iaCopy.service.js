@@ -415,12 +415,17 @@ FORMATO DE RESPUESTA (JSON ESTRICTO):
 Reglas:
 - Escribe SIEMPRE en español latino, tono profesional pero cercano.
 - Mantén la duración objetivo del guion entre 15 y 20 segundos en total.
+- Si alguna instrucción de contexto contradice lo que se ve en la imagen, PRIORIZA SIEMPRE la imagen
+  y genera el paquete creativo en función de lo que ves.
 - No agregues texto fuera del JSON ni comentarios adicionales.
 `
 
-  const contextoTexto = contexto && Object.keys(contexto).length
-    ? `Contexto adicional (JSON): ${JSON.stringify(contexto)}`
-    : "Sin contexto adicional. Usa solo lo que veas en la imagen."
+  const contextoTexto =
+    contexto && Object.keys(contexto).length
+      ? `Contexto adicional (solo tono/objetivo, NO producto específico): ${JSON.stringify(
+          contexto,
+        )}`
+      : "Sin contexto adicional. Usa solo lo que veas en la imagen."
 
   const mensajes = [
     { role: "system", content: SYSTEM_PROMPT_COPY_IMAGEN },

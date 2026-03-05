@@ -78,7 +78,7 @@ router.post("/guion-imagen", requireAuth, async (req, res) => {
 // Genera copy directo a partir de una imagen (visión)
 router.post("/copy-desde-imagen", requireAuth, async (req, res) => {
   try {
-    const { imagenDataUrl, producto, contexto, historial = [] } = req.body || {}
+    const { imagenDataUrl, historial = [] } = req.body || {}
 
     if (!imagenDataUrl) {
       return res.status(400).json({
@@ -87,11 +87,9 @@ router.post("/copy-desde-imagen", requireAuth, async (req, res) => {
       })
     }
 
-    const resultado = await generarCopyDesdeImagen(
-      imagenDataUrl,
-      { producto, contexto },
-      historial,
-    )
+    // Para este flujo creativo, priorizamos SIEMPRE lo que se ve en la imagen.
+    // No se pasa contexto de producto para evitar que la IA fuerce un producto concreto.
+    const resultado = await generarCopyDesdeImagen(imagenDataUrl, {}, historial)
     res.json(resultado)
   } catch (error) {
     console.error("[ia.routes] Error al generar copy desde imagen:", error)
