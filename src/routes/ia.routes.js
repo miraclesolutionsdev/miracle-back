@@ -7,6 +7,7 @@ import {
   generarCopyDesdeImagen,
 } from "../services/iaCopy.service.js"
 import { generarImagenDesdePrompt } from "../services/iaImagen.service.js"
+import { iniciarVideoGrok } from "../services/iaVideo.service.js"
 
 const router = Router()
 
@@ -118,6 +119,35 @@ router.post("/copy-desde-imagen", requireAuth, async (req, res) => {
     res
       .status(500)
       .json({ error: "No se pudo generar el copy desde la imagen con la IA." })
+  }
+})
+
+// Inicia la generación de un video en Grok a partir de un copy + imagen
+router.post("/generar-video", requireAuth, async (req, res) => {
+  try {
+    const { prompt, imageUrl, duration = 5 } = req.body || {}
+
+    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+      return res
+        .status(400)
+        .json({ error: "Falta 'prompt' para generar el video." })
+    }
+
+    if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.trim()) {
+      return res
+        .status(400)
+        .json({ error: "Falta 'imageUrl' para generar el video." })
+    }
+
+    const resultado = await iniciarVideoGrok({ prompt, imageUrl, duration })
+    res.json(resultado)
+  } catch (error) {
+    console.error("[ia.routes] Error al generar video con Grok:", error)
+    res.status(500).json({
+      error:
+        error.message ||
+        "No se pudo iniciar la generación del video con la IA de Grok.",
+    })
   }
 })
 
