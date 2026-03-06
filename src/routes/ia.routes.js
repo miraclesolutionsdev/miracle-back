@@ -7,7 +7,7 @@ import {
   generarCopyDesdeImagen,
 } from "../services/iaCopy.service.js"
 import { generarImagenDesdePrompt } from "../services/iaImagen.service.js"
-import { iniciarVideoGrok } from "../services/iaVideo.service.js"
+import { iniciarVideoGrok, obtenerEstadoVideoGrok } from "../services/iaVideo.service.js"
 
 const router = Router()
 
@@ -147,6 +147,27 @@ router.post("/generar-video", requireAuth, async (req, res) => {
       error:
         error.message ||
         "No se pudo iniciar la generación del video con la IA de Grok.",
+    })
+  }
+})
+
+// Consulta el estado de un video generado en Grok
+router.get("/video-estado/:id", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params
+    if (!id) {
+      return res
+        .status(400)
+        .json({ error: "Falta 'id' de request para consultar el video." })
+    }
+    const resultado = await obtenerEstadoVideoGrok(id)
+    res.json(resultado)
+  } catch (error) {
+    console.error("[ia.routes] Error al consultar estado de video Grok:", error)
+    res.status(500).json({
+      error:
+        error.message ||
+        "No se pudo consultar el estado del video generado con la IA de Grok.",
     })
   }
 })

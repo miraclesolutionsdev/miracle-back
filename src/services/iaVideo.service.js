@@ -9,6 +9,7 @@ if (!XAI_API_KEY) {
 }
 
 const GROK_VIDEO_ENDPOINT = "https://api.x.ai/v1/videos/generations"
+const GROK_VIDEO_STATUS_BASE = "https://api.x.ai/v1/videos"
 
 /**
  * Inicia la generación de un video en Grok a partir de un prompt y una imagen.
@@ -56,4 +57,37 @@ export async function iniciarVideoGrok({ prompt, imageUrl, duration = 5 }) {
   // Devolvemos la respuesta tal cual para que el frontend decida qué mostrar (id, url, etc.)
   return response.json()
 }
+
+/**
+ * Consulta el estado de un video generado en Grok.
+ * @param {string} requestId - Identificador devuelto al iniciar el video.
+ */
+export async function obtenerEstadoVideoGrok(requestId) {
+  if (!XAI_API_KEY) {
+    throw new Error("XAI_API_KEY no configurada en el backend")
+  }
+
+  if (!requestId || typeof requestId !== "string" || !requestId.trim()) {
+    throw new Error("Se requiere un 'requestId' válido para consultar el video")
+  }
+
+  const url = `${GROK_VIDEO_STATUS_BASE}/${encodeURIComponent(requestId.trim())}`
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${XAI_API_KEY}`,
+    },
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(
+      `Error al consultar estado del video en Grok: ${response.status} - ${errText}`,
+    )
+  }
+
+  return response.json()
+}
+
 
