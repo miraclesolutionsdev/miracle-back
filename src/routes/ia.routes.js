@@ -35,6 +35,7 @@ router.get("/resumen", requireAuth, async (req, res) => {
       angulo: doc.angulo ?? null,
       copys: Array.isArray(doc.copys) ? doc.copys : [],
       imagenPorCopy: doc.imagenPorCopy && typeof doc.imagenPorCopy === "object" ? doc.imagenPorCopy : {},
+      mensajes: Array.isArray(doc.mensajes) ? doc.mensajes : [],
     })
   } catch (error) {
     console.error("[ia.routes] Error al obtener resumen:", error)
@@ -49,13 +50,16 @@ router.put("/resumen", requireAuth, async (req, res) => {
     if (!tenantId) {
       return res.status(400).json({ error: "No se pudo identificar el tenant." })
     }
-    const { producto, angulo, copys, imagenPorCopy } = req.body || {}
+    const { producto, angulo, copys, imagenPorCopy, mensajes } = req.body || {}
     const update = {
       producto: producto ?? null,
       angulo: angulo ?? null,
       copys: Array.isArray(copys) ? copys : [],
       imagenPorCopy:
         imagenPorCopy && typeof imagenPorCopy === "object" ? imagenPorCopy : {},
+    }
+    if (mensajes !== undefined) {
+      update.mensajes = Array.isArray(mensajes) ? mensajes : []
     }
     const doc = await IaResumen.findOneAndUpdate(
       { tenantId },
@@ -70,6 +74,7 @@ router.put("/resumen", requireAuth, async (req, res) => {
         doc.imagenPorCopy && typeof doc.imagenPorCopy === "object"
           ? doc.imagenPorCopy
           : {},
+      mensajes: Array.isArray(doc.mensajes) ? doc.mensajes : [],
     })
   } catch (error) {
     console.error("[ia.routes] Error al guardar resumen:", error)

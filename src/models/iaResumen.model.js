@@ -24,6 +24,10 @@ const iaResumenSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
+    mensajes: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+    },
   },
   { timestamps: true, collection: "ia_resumenes" }
 )
