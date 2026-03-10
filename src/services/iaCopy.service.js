@@ -29,12 +29,14 @@ Recibirás un JSON con la información del producto, por ejemplo:
 {
   "nombre": "Nombre del producto",
   "categoria": "Categoría general (ej. zapatillas, software, servicio, etc.)",
-  "publico_objetivo": "Descripción del público ideal",
-  "beneficios_clave": ["beneficio 1", "beneficio 2", "beneficio 3"],
+  "descripcion": "Descripción del producto o servicio",
+  "usos": ["uso 1", "uso 2"],
+  "caracteristicas": ["característica 1", "característica 2"],
   "objetivo": "Objetivo de marketing / canal principal (opcional)"
 }
 
 No inventes datos: usa SOLO lo que venga en ese JSON y tu criterio profesional.
+Basa los ángulos en los usos, características y descripción reales del producto.
 
 Debes devolver EXACTAMENTE 5 ángulos de venta, todos claramente distintos entre sí.
 
@@ -43,8 +45,9 @@ FORMATO DE RESPUESTA (JSON ESTRICTO):
   "producto": {
     "nombre": "...",
     "categoria": "...",
-    "publico_objetivo": "...",
-    "beneficios_clave": ["...", "..."]
+    "descripcion": "...",
+    "usos": ["..."],
+    "caracteristicas": ["..."]
   },
   "angulos": [
     {
@@ -132,12 +135,21 @@ Ahora trabajarás SOLO sobre UN ÁNGULO concreto de un producto.
 
 Recibirás un JSON:
 {
-  "producto": { ... },
+  "producto": {
+    "nombre": "...",
+    "categoria": "...",
+    "descripcion": "...",
+    "usos": ["uso 1", "uso 2"],
+    "caracteristicas": ["característica 1", "característica 2"]
+  },
   "angulo": {
     "nombre": "...",
     "descripcion": "..."
   }
 }
+
+Basa los copys en los usos, características y descripción reales del producto.
+No inventes datos: usa SOLO lo que venga en ese JSON y tu criterio profesional.
 
 Debes generar EXACTAMENTE 5 copys distintos para este ángulo, cubriendo el funnel:
 - 2 copys TOF (Top of Funnel)

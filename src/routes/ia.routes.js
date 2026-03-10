@@ -166,7 +166,7 @@ router.post("/guion-imagen", requireAuth, async (req, res) => {
 // Genera imagen a partir de un prompt (Google Imagen / Gemini)
 router.post("/generar-imagen", requireAuth, async (req, res) => {
   try {
-    const { prompt, aspectRatio = "1:1" } = req.body || {}
+    const { prompt, aspectRatio = "1:1", imagenesProducto = [] } = req.body || {}
 
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({
@@ -174,7 +174,7 @@ router.post("/generar-imagen", requireAuth, async (req, res) => {
       })
     }
 
-    const resultado = await generarImagenDesdePrompt(prompt.trim(), aspectRatio)
+    const resultado = await generarImagenDesdePrompt(prompt.trim(), aspectRatio, imagenesProducto)
     res.json(resultado)
   } catch (error) {
     console.error("[ia.routes] Error al generar imagen:", error)
