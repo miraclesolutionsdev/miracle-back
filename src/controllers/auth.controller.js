@@ -7,6 +7,22 @@ import { obtenerPresignedPutLogo } from "../services/s3.service.js"
 const JWT_SECRET = process.env.JWT_SECRET || "tu-clave-secreta-cambiar-en-produccion"
 const SALT_ROUNDS = 10
 
+/** Determina si userId es el administrador original del tenant */
+async function resolveIsOriginalAdmin(tenantId, userId) {
+  const users = await User.find({ tenantId })
+    .select("_id isOriginalAdmin")
+    .sort({ createdAt: 1 })
+    .lean()
+  if (!users.length) return false
+  const targetId = userId.toString()
+  const target = users.find((u) => u._id.toString() === targetId)
+  if (!target) return false
+  if (target.isOriginalAdmin === true) return true
+  const hasAnyOriginal = users.some((u) => u.isOriginalAdmin === true)
+  if (hasAnyOriginal) return false
+  return users[0]._id.toString() === targetId
+}
+
 export async function login(req, res) {
   try {
     const { email, password } = req.body
@@ -24,7 +40,10 @@ export async function login(req, res) {
       JWT_SECRET,
       { expiresIn: "7d" }
     )
-    const tenant = await Tenant.findById(user.tenantId)
+    const [tenant, isOriginal] = await Promise.all([
+      Tenant.findById(user.tenantId),
+      resolveIsOriginalAdmin(user.tenantId, user._id),
+    ])
     res.json({
       token,
       user: {
@@ -33,6 +52,7 @@ export async function login(req, res) {
         nombre: user.nombre,
         tenantId: user.tenantId.toString(),
         tenantNombre: tenant?.nombre || "",
+        isOriginalAdmin: isOriginal,
       },
     })
   } catch (error) {
@@ -148,6 +168,7 @@ export async function crearTienda(req, res) {
         nombre: user.nombre,
         tenantId: user.tenantId.toString(),
         tenantNombre: tenant.nombre,
+        isOriginalAdmin: true, // siempre es el primero del tenant
       },
     })
   } catch (error) {
@@ -162,7 +183,10 @@ export async function obtenerPerfil(req, res) {
     if (!userId || !tenantId) return res.status(401).json({ error: "No autorizado" })
     const user = await User.findById(userId).select("-password").lean()
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" })
-    const tenant = await Tenant.findById(tenantId).lean()
+    const [tenant, isOriginal] = await Promise.all([
+      Tenant.findById(tenantId).lean(),
+      resolveIsOriginalAdmin(tenantId, userId),
+    ])
     res.json({
       user: {
         id: user._id.toString(),
@@ -170,6 +194,7 @@ export async function obtenerPerfil(req, res) {
         nombre: user.nombre ?? "",
         tenantId: user.tenantId.toString(),
         tenantNombre: tenant?.nombre ?? "",
+        isOriginalAdmin: isOriginal,
       },
       tenant: tenant
         ? {

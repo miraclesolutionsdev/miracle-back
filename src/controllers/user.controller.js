@@ -96,6 +96,15 @@ export async function actualizar(req, res) {
     const update = {}
     const original = await isOriginalAdmin(tenantId, id)
 
+    // Si el objetivo es el admin original, solo él mismo puede editarse
+    if (original) {
+      const requesterId = req.userId?.toString ? req.userId.toString() : String(req.userId)
+      const requesterIsOriginal = await isOriginalAdmin(tenantId, requesterId)
+      if (!requesterIsOriginal) {
+        return res.status(403).json({ error: "Solo el administrador original puede modificar su propia cuenta" })
+      }
+    }
+
     if (typeof activo === "boolean" && !original) {
       update.activo = activo
     } else if (typeof activo === "boolean" && original) {
