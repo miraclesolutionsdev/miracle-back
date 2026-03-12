@@ -1,6 +1,6 @@
 import Producto from "../models/producto.model.js"
 import mongoose from "mongoose"
-import { subirImagenEvitandoDuplicado } from "../services/s3.service.js"
+import { subirImagenEvitandoDuplicado, eliminarImagenPorUrl } from "../services/s3.service.js"
 
 function parsePrecio(val) {
   if (typeof val === "number" && !Number.isNaN(val)) return Math.max(0, val)
@@ -217,6 +217,37 @@ export async function obtenerImagen(req, res) {
       return res.redirect(302, img.url)
     }
     return res.status(404).json({ error: "Imagen no encontrada" })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+}
+
+export async function eliminarImagen(req, res) {
+  try {
+    const { id, index } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "ID de producto no válido" })
+    }
+    const i = parseInt(index, 10)
+    if (Number.isNaN(i) || i < 0) {
+      return res.status(400).json({ error: "Índice de imagen no válido" })
+    }
+    const producto = await Producto.findById(id)
+    if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
+    if (!Array.isArray(producto.imagenes) || !producto.imagenes[i]) {
+      return res.status(404).json({ error: "Imagen no encontrada" })
+    }
+    const imagenAEliminar = producto.imagenes[i]
+    if (imagenAEliminar?.url) {
+      try {
+        await eliminarImagenPorUrl(imagenAEliminar.url)
+      } catch (err) {
+        console.error(`Error al eliminar archivo de S3: ${err.message}`)
+      }
+    }
+    producto.imagenes.splice(i, 1)
+    await producto.save()
+    res.json(toProductoResponse(producto))
   } catch (error) {
     res.status(500).json({ error: error.message })
   }

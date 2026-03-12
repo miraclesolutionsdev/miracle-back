@@ -7,6 +7,7 @@ import {
   actualizar,
   inactivar,
   obtenerImagen,
+  eliminarImagen,
 } from "../controllers/producto.controller.js"
 
 const router = Router()
@@ -14,6 +15,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 
 router.get("/", listarTodos)
 router.get("/:id/imagenes/:index", obtenerImagen)
+router.delete("/:id/imagenes/:index", eliminarImagen)
 router.get("/:id", obtenerUno)
 router.post("/", upload.array("imagenes", 10), crear)
 router.put("/:id", upload.array("imagenes", 10), actualizar)

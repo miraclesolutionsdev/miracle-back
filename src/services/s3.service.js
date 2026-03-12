@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3"
+import { S3Client, PutObjectCommand, HeadObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
 const bucket = process.env.S3_BUCKET
@@ -158,4 +158,36 @@ export async function obtenerPresignedPutLogo(tenantId, originalname, contentTyp
   const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 })
   const publicUrl = `${getBaseUrl()}/${key}`
   return { uploadUrl, key, publicUrl }
+}
+
+/**
+ * Elimina un archivo del S3 dado su URL pública.
+ * Extrae la key de la URL y la elimina del bucket.
+ */
+export async function eliminarImagenPorUrl(urlPublica) {
+  if (!bucket) throw new Error("S3_BUCKET no está configurado en .env")
+  if (!urlPublica) return false
+
+  try {
+    const baseUrl = getBaseUrl()
+    let key
+
+    if (urlPublica.startsWith(baseUrl)) {
+      key = urlPublica.slice(baseUrl.length + 1)
+    } else if (urlPublica.includes(bucket)) {
+      const match = urlPublica.match(new RegExp(`${bucket}/(.+)$`))
+      key = match ? match[1] : null
+    }
+
+    if (!key) {
+      console.warn(`No se pudo extraer la key de la URL: ${urlPublica}`)
+      return false
+    }
+
+    await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
+    return true
+  } catch (err) {
+    console.error(`Error eliminando imagen del S3: ${err.message}`)
+    throw err
+  }
 }
