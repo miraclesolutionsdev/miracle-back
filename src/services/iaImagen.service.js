@@ -41,7 +41,12 @@ async function generarImagenConReferencia(prompt, imagenProducto) {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
           {
-            text: `Basándote en la imagen del producto, crea una imagen publicitaria profesional. ${prompt}`,
+            text: `Eres un director de arte experto en publicidad. Basándote en la imagen del producto proporcionada, genera una fotografía de alta calidad, con estilo publicitario muy profesional.
+
+Utiliza la siguiente descripción y copys para contextualizar y componer la escena visual:
+"${prompt}"
+
+REGLA CRÍTICA Y ESTRICTA: La imagen DEBE ESTAR COMPLETAMENTE LIBRE DE TEXTO (text-free). NO incluyas letras, palabras, tipografía, frases, marcas de agua ni logos en la imagen generada. Céntrate exclusivamente en la estética visual espectacular, iluminación de estudio, fotorrealismo y composición de producto.`,
           },
         ],
       },
@@ -99,8 +104,10 @@ export async function generarImagenDesdePrompt(prompt, aspectRatio = "1:1", imag
     GEMINI_API_KEY,
   )}`
 
+  const enhancedPrompt = `Eres un director de arte experto. Crea una fotografía publicitaria fotorrealista de alta calidad orientada a producto y muy profesional. Usa la siguiente descripción y copys para contextualizar la escena: "${prompt.trim()}". REGLA CRÍTICA Y ESTRICTA: La imagen DEBE ESTAR COMPLETAMENTE ESTRICTAMENTE LIBRE DE TEXTO (text-free). NO incluyas letras, palabras, tipografía, marcas de agua ni logos. Céntrate en la belleza visual, iluminación de estudio y composición publicitaria.`;
+
   const body = {
-    instances: [{ prompt: prompt.trim() }],
+    instances: [{ prompt: enhancedPrompt }],
     parameters: {
       sampleCount: 1,
       aspectRatio: aspectRatio || "1:1",

@@ -1,4 +1,4 @@
-import { MercadoPagoConfig, Preference } from 'mercadopago'
+import { MercadoPagoConfig, Preference, Payment } from 'mercadopago'
 import Producto from '../models/producto.model.js'
 
 const client = new MercadoPagoConfig({
@@ -60,5 +60,32 @@ export async function crearPreferencia(req, res) {
   } catch (err) {
     console.error('[MP] Error al crear preferencia:', err)
     res.status(500).json({ error: 'Error al crear la preferencia de pago' })
+  }
+}
+
+export async function recibirWebhook(req, res) {
+  // Mercado Pago espera un 200 rápido para no reintentar
+  res.sendStatus(200)
+
+  try {
+    const { type, data } = req.body
+
+    if (type !== 'payment' || !data?.id) return
+
+    const paymentApi = new Payment(client)
+    const pago = await paymentApi.get({ id: data.id })
+
+    if (pago.status !== 'approved') return
+
+    const productoId = pago.metadata?.producto_id
+    if (!productoId) return
+
+    const producto = await Producto.findById(productoId)
+    if (!producto || producto.stock <= 0) return
+
+    await Producto.findByIdAndUpdate(productoId, { $inc: { stock: -1 } })
+    console.log(`[MP] Stock decrementado para producto ${productoId}`)
+  } catch (err) {
+    console.error('[MP] Error al procesar webhook:', err)
   }
 }
