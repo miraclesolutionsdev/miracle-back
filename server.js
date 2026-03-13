@@ -18,6 +18,8 @@ const app = express()
 const corsOptions = {
   origin: [
     "https://miracle-front-jade.vercel.app",
+    "https://www.miraclesolutions.com.co",
+    "https://miraclesolutions.com.co",
     "http://localhost:5173",
     "http://localhost:3000"
   ],
