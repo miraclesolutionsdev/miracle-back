@@ -14,39 +14,67 @@ const IMAGEN_MODEL = "imagen-4.0-fast-generate-001"
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 /**
- * Genera una imagen usando Gemini 2.0 Flash con una imagen de referencia del producto.
- * @param {string} prompt
- * @param {{ url: string }} imagenProducto
- * @returns {Promise<{ imageBase64: string }>}
+ * Descarga una imagen desde URL y retorna { mimeType, base64Data }.
  */
-async function generarImagenConReferencia(prompt, imagenProducto) {
-  const imageUrl = imagenProducto?.url
-  if (!imageUrl) throw new Error("La imagen del producto no tiene URL.")
-
+async function descargarImagenComoBase64(imageUrl) {
   const imgResponse = await fetch(imageUrl)
   if (!imgResponse.ok) {
-    throw new Error(`No se pudo descargar la imagen del producto: ${imgResponse.status}`)
+    throw new Error(`No se pudo descargar la imagen: ${imgResponse.status} - ${imageUrl}`)
   }
   const arrayBuffer = await imgResponse.arrayBuffer()
   const base64Data = Buffer.from(arrayBuffer).toString("base64")
-
   const contentType = imgResponse.headers.get("content-type") || "image/jpeg"
   const mimeType = contentType.split(";")[0].trim()
+  return { mimeType, base64Data }
+}
 
-  const url = `${BASE_URL}/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`
+/**
+ * Genera una imagen usando Gemini 2.5 Flash con múltiples imágenes de referencia del producto.
+ * @param {string} prompt
+ * @param {Array<{ url: string }>} imagenesProducto
+ * @returns {Promise<{ imageBase64: string }>}
+ */
+async function generarImagenConReferencia(prompt, imagenesProducto) {
+  const imagenes = Array.isArray(imagenesProducto) ? imagenesProducto : [imagenesProducto]
+  const urls = imagenes.map((i) => i?.url).filter(Boolean)
+  if (urls.length === 0) throw new Error("Las imágenes del producto no tienen URLs válidas.")
 
+  // Máximo 5 imágenes para no sobrecargar el request
+  const urlsAUsar = urls.slice(0, 5)
+
+  // Descargar todas en paralelo
+  const imagenesDescargadas = await Promise.all(
+    urlsAUsar.map((url) => descargarImagenComoBase64(url).catch(() => null))
+  )
+  const imagenesValidas = imagenesDescargadas.filter(Boolean)
+  if (imagenesValidas.length === 0) throw new Error("No se pudo descargar ninguna imagen del producto.")
+
+  const contextoParts = imagenesValidas.map(({ mimeType, base64Data }) => ({
+    inlineData: { mimeType, data: base64Data },
+  }))
+
+  const referenciaTexto = imagenesValidas.length > 1
+    ? `Te proporciono ${imagenesValidas.length} imágenes del mismo producto desde distintos ángulos y perspectivas. Úsalas todas como referencia visual para entender completamente el producto: su forma, colores, detalles y características.`
+    : `Te proporciono una imagen del producto como referencia visual.`
+
+  const url = `${BASE_URL}/models/gemini-2.5-flash-image:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`
   const body = {
     contents: [
       {
         parts: [
-          { inlineData: { mimeType, data: base64Data } },
+          ...contextoParts,
           {
-            text: `Eres un director de arte experto en publicidad. Basándote en la imagen del producto proporcionada, genera una fotografía de alta calidad, con estilo publicitario muy profesional.
+            text: `Eres un director de arte experto en publicidad. ${referenciaTexto}
 
-Utiliza la siguiente descripción y copys para contextualizar y componer la escena visual:
+REGLA CRÍTICA: El producto que aparece en las imágenes de referencia es el producto REAL del cliente. Debes reproducirlo con total fidelidad visual: mismos colores exactos, mismo diseño, mismos estampados, misma forma y silueta. NUNCA inventes ni sustituyas el producto por uno diferente aunque sea similar.
+
+Genera una fotografía publicitaria de alta calidad basándote en esta descripción de escena:
 "${prompt}"
 
-REGLA CRÍTICA Y ESTRICTA: La imagen DEBE ESTAR COMPLETAMENTE LIBRE DE TEXTO (text-free). NO incluyas letras, palabras, tipografía, frases, marcas de agua ni logos en la imagen generada. Céntrate exclusivamente en la estética visual espectacular, iluminación de estudio, fotorrealismo y composición de producto.`,
+REGLAS ADICIONALES:
+- El producto en la imagen generada debe ser IDÉNTICO al de las fotos de referencia
+- La imagen DEBE estar COMPLETAMENTE LIBRE DE TEXTO: sin letras, palabras, tipografía, marcas de agua ni logos
+- Estilo fotorrealista, iluminación profesional, composición publicitaria para redes sociales (1:1)`,
           },
         ],
       },
@@ -94,7 +122,7 @@ export async function generarImagenDesdePrompt(prompt, aspectRatio = "1:1", imag
 
   if (Array.isArray(imagenesProducto) && imagenesProducto.length > 0) {
     try {
-      return await generarImagenConReferencia(prompt, imagenesProducto[0])
+      return await generarImagenConReferencia(prompt, imagenesProducto)
     } catch (e) {
       console.warn("[iaImagen.service] Falló generación con referencia, usando text-to-image:", e.message)
     }

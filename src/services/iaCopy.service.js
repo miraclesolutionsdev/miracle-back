@@ -380,6 +380,7 @@ export async function generarCopyDesdeImagen(
   imagenDataUrl,
   contexto = {},
   historial = [],
+  imagenesProducto = [],
 ) {
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY no configurada en el backend")
@@ -427,17 +428,45 @@ FORMATO DE RESPUESTA (JSON ESTRICTO):
 Reglas:
 - Escribe SIEMPRE en español latino, tono profesional pero cercano.
 - Mantén la duración objetivo del guion entre 15 y 20 segundos en total.
-- Si alguna instrucción de contexto contradice lo que se ve en la imagen, PRIORIZA SIEMPRE la imagen
-  y genera el paquete creativo en función de lo que ves.
+- Las fotos REALES del producto son tu referencia visual principal. Describe el producto tal como
+  se ve en esas fotos (colores, diseño, forma) para que la IA de video genere imágenes fieles al
+  producto real.
+- En las "instrucciones_ia_video" incluye SIEMPRE una descripción visual detallada del producto
+  real (color, forma, diseño específico) para que la IA de video lo reproduzca correctamente.
+- No inventes características visuales del producto que no se vean en las imágenes proporcionadas.
 - No agregues texto fuera del JSON ni comentarios adicionales.
 `
 
   const contextoTexto =
     contexto && Object.keys(contexto).length
-      ? `Contexto adicional (solo tono/objetivo, NO producto específico): ${JSON.stringify(
-          contexto,
-        )}`
-      : "Sin contexto adicional. Usa solo lo que veas en la imagen."
+      ? `Producto: ${contexto.nombre || ''}. ${contexto.descripcion || ''}. Ángulo de campaña: ${contexto.angulo || ''}.`
+      : ""
+
+  // Construir el contenido del mensaje de usuario con imágenes reales del producto primero
+  const contenidoUsuario = []
+
+  const textoIntro = contextoTexto
+    ? `Genera el mejor copy posible para este producto siguiendo el formato JSON indicado. ${contextoTexto} IMPORTANTE: Las imágenes a continuación son fotos REALES del producto. Úsalas como referencia visual principal para describir escenas, colores, diseño y características visuales del producto con fidelidad.`
+    : "Genera el mejor copy posible para este producto siguiendo el formato JSON indicado. IMPORTANTE: Las imágenes a continuación son fotos REALES del producto. Úsalas como referencia visual principal."
+
+  contenidoUsuario.push({ type: "text", text: textoIntro })
+
+  // Incluir imágenes reales del producto (máximo 3 para no exceder límites)
+  const imagenesReales = Array.isArray(imagenesProducto) ? imagenesProducto.slice(0, 3) : []
+  for (const url of imagenesReales) {
+    if (url && typeof url === "string") {
+      contenidoUsuario.push({ type: "image_url", image_url: { url, detail: "low" } })
+    }
+  }
+
+  // Incluir también la imagen AI-generada del copy si existe
+  if (imagenDataUrl && typeof imagenDataUrl === "string") {
+    contenidoUsuario.push({
+      type: "text",
+      text: "Esta es la imagen creativa AI generada para el copy (úsala como referencia de escena y ambiente):",
+    })
+    contenidoUsuario.push({ type: "image_url", image_url: { url: imagenDataUrl, detail: "low" } })
+  }
 
   const mensajes = [
     { role: "system", content: SYSTEM_PROMPT_COPY_IMAGEN },
@@ -450,20 +479,7 @@ Reglas:
       })),
     {
       role: "user",
-      content: [
-        {
-          type: "text",
-          text:
-            "Genera el mejor copy posible para esta imagen siguiendo el formato JSON indicado. " +
-            contextoTexto,
-        },
-        {
-          type: "image_url",
-          image_url: {
-            url: imagenDataUrl,
-          },
-        },
-      ],
+      content: contenidoUsuario,
     },
   ]
 

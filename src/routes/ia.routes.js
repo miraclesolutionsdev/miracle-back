@@ -10,6 +10,7 @@ import {
 } from "../services/iaCopy.service.js"
 import { generarImagenDesdePrompt } from "../services/iaImagen.service.js"
 import { iniciarVideoGrok, obtenerEstadoVideoGrok } from "../services/iaVideo.service.js"
+import { subirImagen } from "../services/s3.service.js"
 
 const router = Router()
 
@@ -187,18 +188,15 @@ router.post("/generar-imagen", requireAuth, async (req, res) => {
 // Genera copy directo a partir de una imagen (visión)
 router.post("/copy-desde-imagen", requireAuth, async (req, res) => {
   try {
-    const { imagenDataUrl, historial = [] } = req.body || {}
+    const { imagenDataUrl, imagenesProducto = [], contextoProducto = {}, historial = [] } = req.body || {}
 
-    if (!imagenDataUrl) {
+    if (!imagenDataUrl && (!imagenesProducto || imagenesProducto.length === 0)) {
       return res.status(400).json({
-        error:
-          "Falta 'imagenDataUrl' en el cuerpo de la petición para generar el copy desde imagen.",
+        error: "Falta 'imagenDataUrl' o 'imagenesProducto' en el cuerpo de la petición.",
       })
     }
 
-    // Para este flujo creativo, priorizamos SIEMPRE lo que se ve en la imagen.
-    // No se pasa contexto de producto para evitar que la IA fuerce un producto concreto.
-    const resultado = await generarCopyDesdeImagen(imagenDataUrl, {}, historial)
+    const resultado = await generarCopyDesdeImagen(imagenDataUrl, contextoProducto, historial, imagenesProducto)
     res.json(resultado)
   } catch (error) {
     console.error("[ia.routes] Error al generar copy desde imagen:", error)
@@ -211,7 +209,7 @@ router.post("/copy-desde-imagen", requireAuth, async (req, res) => {
 // Inicia la generación de un video en Grok a partir de un copy + imagen
 router.post("/generar-video", requireAuth, async (req, res) => {
   try {
-    const { prompt, imageUrl, duration = 5 } = req.body || {}
+    const { prompt, imageUrl } = req.body || {}
 
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return res
@@ -225,7 +223,19 @@ router.post("/generar-video", requireAuth, async (req, res) => {
         .json({ error: "Falta 'imageUrl' para generar el video." })
     }
 
-    const resultado = await iniciarVideoGrok({ prompt, imageUrl, duration })
+    // Si es base64, subirlo a S3 para obtener una URL pública que Grok pueda consumir
+    let urlFinal = imageUrl.trim()
+    if (urlFinal.startsWith('data:')) {
+      const matches = urlFinal.match(/^data:(image\/\w+);base64,(.+)$/)
+      if (!matches) throw new Error("Formato de imagen base64 inválido.")
+      const mimeType = matches[1]
+      const ext = mimeType.split('/')[1] || 'png'
+      const buffer = Buffer.from(matches[2], 'base64')
+      const key = `ia-video-ref/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+      urlFinal = await subirImagen(buffer, mimeType, key)
+    }
+
+    const resultado = await iniciarVideoGrok({ prompt, imageUrl: urlFinal })
     res.json(resultado)
   } catch (error) {
     console.error("[ia.routes] Error al generar video con Grok:", error)

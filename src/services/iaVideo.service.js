@@ -12,13 +12,32 @@ const GROK_VIDEO_ENDPOINT = "https://api.x.ai/v1/videos/generations"
 const GROK_VIDEO_STATUS_BASE = "https://api.x.ai/v1/videos"
 
 /**
- * Inicia la generación de un video en Grok a partir de un prompt y una imagen.
- * @param {object} payload
- * @param {string} payload.prompt - Descripción detallada del video (usaremos el copy generado).
- * @param {string} payload.imageUrl - URL o data URL de la imagen base.
- * @param {number} [payload.duration=5] - Duración aproximada en segundos.
+ * Construye un prompt de video optimizado a partir del copy generado/editado.
+ * Extrae la esencia narrativa para que Grok genere movimiento de cámara coherente.
  */
-export async function iniciarVideoGrok({ prompt, imageUrl, duration = 5 }) {
+function construirPromptVideo(copyTexto) {
+  return `Animate this exact product photo into a short 10-second vertical advertising video (9:16).
+
+CRITICAL: The reference image IS the real product. Keep the product's exact appearance: same colors, same design, same patterns, same clothing style. Do NOT replace or reinvent the product with a different version.
+
+Creative direction based on the following script:
+${copyTexto.trim()}
+
+PRODUCTION RULES:
+- Keep the product visually identical to the reference image at all times
+- Animate naturally: subtle movements, camera pan, clothing texture detail, warm lighting
+- Cinematic, professional advertising quality
+- No text overlays
+- Vertical 9:16 format for Reels and TikTok`.trim()
+}
+
+/**
+ * Inicia la generación de un video en Grok a partir de un copy y una imagen.
+ * @param {object} payload
+ * @param {string} payload.prompt - Copy generado o editado por el usuario (hook + guion + ideas).
+ * @param {string} payload.imageUrl - URL o data URL de la imagen base.
+ */
+export async function iniciarVideoGrok({ prompt, imageUrl }) {
   if (!XAI_API_KEY) {
     throw new Error("XAI_API_KEY no configurada en el backend")
   }
@@ -31,11 +50,14 @@ export async function iniciarVideoGrok({ prompt, imageUrl, duration = 5 }) {
     throw new Error("Se requiere 'imageUrl' para generar el video")
   }
 
+  const promptVideo = construirPromptVideo(prompt)
+
   const body = {
     model: "grok-imagine-video",
-    prompt: prompt.trim(),
+    prompt: promptVideo,
     image_url: imageUrl.trim(),
-    duration,
+    duration: 10,
+    resolution: "720p",
   }
 
   const response = await fetch(GROK_VIDEO_ENDPOINT, {
