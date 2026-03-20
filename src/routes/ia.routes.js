@@ -9,7 +9,7 @@ import {
   generarCopyDesdeImagen,
 } from "../services/iaCopy.service.js"
 import { generarImagenDesdePrompt } from "../services/iaImagen.service.js"
-import { iniciarVideoGrok, obtenerEstadoVideoGrok } from "../services/iaVideo.service.js"
+import { iniciarVideoRunway, obtenerEstadoVideoRunway, generarVozRunway, obtenerEstadoVozRunway } from "../services/iaVideo.service.js"
 import { subirImagen } from "../services/s3.service.js"
 
 const router = Router()
@@ -188,7 +188,7 @@ router.post("/generar-imagen", requireAuth, async (req, res) => {
 // Genera copy directo a partir de una imagen (visión)
 router.post("/copy-desde-imagen", requireAuth, async (req, res) => {
   try {
-    const { imagenDataUrl, imagenesProducto = [], contextoProducto = {}, historial = [] } = req.body || {}
+    const { imagenDataUrl, imagenesProducto = [], contextoProducto = {}, historial = [], copyBase = null } = req.body || {}
 
     if (!imagenDataUrl && (!imagenesProducto || imagenesProducto.length === 0)) {
       return res.status(400).json({
@@ -196,7 +196,7 @@ router.post("/copy-desde-imagen", requireAuth, async (req, res) => {
       })
     }
 
-    const resultado = await generarCopyDesdeImagen(imagenDataUrl, contextoProducto, historial, imagenesProducto)
+    const resultado = await generarCopyDesdeImagen(imagenDataUrl, contextoProducto, historial, imagenesProducto, copyBase)
     res.json(resultado)
   } catch (error) {
     console.error("[ia.routes] Error al generar copy desde imagen:", error)
@@ -206,65 +206,64 @@ router.post("/copy-desde-imagen", requireAuth, async (req, res) => {
   }
 })
 
-// Inicia la generación de un video en Grok a partir de un copy + imagen
-router.post("/generar-video", requireAuth, async (req, res) => {
+
+// Inicia generación de video con RunwayML (image-to-video)
+router.post("/generar-video-runway", requireAuth, async (req, res) => {
   try {
-    const { prompt, imageUrl } = req.body || {}
+    const { copyTexto, imageUrl, ratio, duration } = req.body || {}
 
-    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
-      return res
-        .status(400)
-        .json({ error: "Falta 'prompt' para generar el video." })
+    if (!copyTexto || typeof copyTexto !== "string" || !copyTexto.trim()) {
+      return res.status(400).json({ error: "Falta 'copyTexto' para generar el video con Runway." })
     }
-
     if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.trim()) {
-      return res
-        .status(400)
-        .json({ error: "Falta 'imageUrl' para generar el video." })
+      return res.status(400).json({ error: "Falta 'imageUrl' para generar el video con Runway." })
     }
 
-    // Si es base64, subirlo a S3 para obtener una URL pública que Grok pueda consumir
-    let urlFinal = imageUrl.trim()
-    if (urlFinal.startsWith('data:')) {
-      const matches = urlFinal.match(/^data:(image\/\w+);base64,(.+)$/)
-      if (!matches) throw new Error("Formato de imagen base64 inválido.")
-      const mimeType = matches[1]
-      const ext = mimeType.split('/')[1] || 'png'
-      const buffer = Buffer.from(matches[2], 'base64')
-      const key = `ia-video-ref/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-      urlFinal = await subirImagen(buffer, mimeType, key)
-    }
-
-    const resultado = await iniciarVideoGrok({ prompt, imageUrl: urlFinal })
+    const resultado = await iniciarVideoRunway({ copyTexto, imageUrl, ratio, duration })
     res.json(resultado)
   } catch (error) {
-    console.error("[ia.routes] Error al generar video con Grok:", error)
-    res.status(500).json({
-      error:
-        error.message ||
-        "No se pudo iniciar la generación del video con la IA de Grok.",
-    })
+    console.error("[ia.routes] Error al generar video con Runway:", error)
+    res.status(500).json({ error: error.message || "No se pudo iniciar la generación del video con Runway." })
   }
 })
 
-// Consulta el estado de un video generado en Grok
-router.get("/video-estado/:id", requireAuth, async (req, res) => {
+// Consulta el estado de un task de RunwayML
+router.get("/video-runway-estado/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params
-    if (!id) {
-      return res
-        .status(400)
-        .json({ error: "Falta 'id' de request para consultar el video." })
-    }
-    const resultado = await obtenerEstadoVideoGrok(id)
+    if (!id) return res.status(400).json({ error: "Falta 'id' del task de Runway." })
+
+    const resultado = await obtenerEstadoVideoRunway(id)
     res.json(resultado)
   } catch (error) {
-    console.error("[ia.routes] Error al consultar estado de video Grok:", error)
-    res.status(500).json({
-      error:
-        error.message ||
-        "No se pudo consultar el estado del video generado con la IA de Grok.",
-    })
+    console.error("[ia.routes] Error al consultar estado de video Runway:", error)
+    res.status(500).json({ error: error.message || "No se pudo consultar el estado del video de Runway." })
+  }
+})
+
+// Genera voz (TTS) con RunwayML
+router.post("/generar-voz-runway", requireAuth, async (req, res) => {
+  try {
+    const { texto, voiceId } = req.body || {}
+    if (!texto?.trim()) return res.status(400).json({ error: "Falta 'texto' para generar la voz." })
+    const resultado = await generarVozRunway({ texto, voiceId })
+    res.json(resultado)
+  } catch (error) {
+    console.error("[ia.routes] Error al generar voz con Runway:", error)
+    res.status(500).json({ error: error.message || "No se pudo generar la voz." })
+  }
+})
+
+// Consulta estado de la voz generada
+router.get("/voz-runway-estado/:id", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params
+    if (!id) return res.status(400).json({ error: "Falta 'id' del task." })
+    const resultado = await obtenerEstadoVozRunway(id)
+    res.json(resultado)
+  } catch (error) {
+    console.error("[ia.routes] Error al consultar estado de voz Runway:", error)
+    res.status(500).json({ error: error.message || "No se pudo consultar el estado de la voz." })
   }
 })
 

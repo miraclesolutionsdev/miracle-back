@@ -381,6 +381,7 @@ export async function generarCopyDesdeImagen(
   contexto = {},
   historial = [],
   imagenesProducto = [],
+  copyBase = null,
 ) {
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY no configurada en el backend")
@@ -391,63 +392,68 @@ export async function generarCopyDesdeImagen(
   }
 
   const SYSTEM_PROMPT_COPY_IMAGEN = `
-Eres un creativo senior de contenido audiovisual y copywriter de performance para redes sociales
-(TikTok, Reels, Shorts y Meta Ads).
+Eres un director creativo experto en publicidad audiovisual para redes sociales y un especialista
+en generar prompts para motores de video IA como Runway Gen4.
 
-Tu tarea: a partir de UNA IMAGEN, debes generar un PAQUETE CREATIVO COMPLETO para un video corto
-de aproximadamente 15–20 segundos y su pieza de anuncio/copy para redes.
+Tu tarea: analizar la imagen recibida y generar un PROMPT CINEMATOGRÁFICO DIRECTO para Runway
+que describa exactamente el video de 10 segundos que debe generarse, más el copy del post.
 
-Si recibes información adicional del producto o contexto, úsala para afinar el mensaje,
-pero no inventes datos que no se mencionen explícitamente.
+ANÁLISIS VISUAL OBLIGATORIO:
+- Observa qué hay exactamente en la imagen: ¿solo producto? ¿ambiente? ¿colores? ¿texturas?
+- Describe solo lo que VES. No asumas personas si no aparecen.
+- El producto en el video debe verse IDÉNTICO al de la imagen — mismos colores, formas y detalles.
 
 FORMATO DE RESPUESTA (JSON ESTRICTO):
 {
-  "hook": "Frase inicial muy llamativa para captar la atención en 1-2 segundos.",
+  "runway_prompt": "PROMPT DIRECTO EN INGLÉS para Runway Gen4. Este es el prompt completo que se enviará directamente al motor de video — debe ser autocontenido y ejecutable. ESTRUCTURA OBLIGATORIA: [1] Descripción exacta del producto visible en la imagen (colores, materiales, forma, detalles). [2] Secuencia de planos en orden temporal: plano 1 (0-3s) → plano 2 (3-7s) → plano 3 (7-10s), cada uno con movimiento de cámara específico y acción visible. [3] Ambiente, iluminación y atmósfera. [4] Estilo visual y ritmo. TIPOS DE MOVIMIENTO por producto: vehículos/acción → 'accelerating forward, wheels spinning, dust cloud rising, low-angle tracking shot'; ropa/textiles → 'fabric gently flowing in breeze, texture close-up with soft light, slow dolly push-in'; alimentos/bebidas → 'liquid pouring in slow motion, steam rising, product glistening under studio light'; electrónicos → 'product rotating on reflective surface, light streaks moving across screen, slow orbit'; joyería/accesorios → 'sparkling reflections, macro close-up of details, slow 360 rotation'; general → 'slow cinematic orbit around product, ambient particles floating, camera pushing in'. REGLAS: verbos en presente continuo (spinning, flowing, rising, orbiting, pushing, tracking, revealing), sin personas ni modelos humanos, máx 900 chars, inglés fluido y cinematográfico.",
   "guion_voz": [
-    { "segundos": "0-3", "texto": "Texto de voz en off o diálogo para este tramo." },
-    { "segundos": "3-7", "texto": "..." },
-    { "segundos": "7-12", "texto": "..." },
-    { "segundos": "12-20", "texto": "..." }
-  ],
-  "ideas_visuales": [
-    "Descripción de plano o escena 1 para acompañar el guion.",
-    "Descripción de plano o escena 2...",
-    "..."
-  ],
-  "instrucciones_ia_video": [
-    "Instrucciones concretas para un modelo generador de video (formato, ritmo, tipo de planos, colores, etc.).",
-    "Otra instrucción relevante..."
+    "Frase 1 para locución — hook de impacto (0-3 segundos).",
+    "Frase 2 — beneficio principal del producto (3-7 segundos).",
+    "Frase 3 — CTA claro y directo (7-10 segundos)."
   ],
   "copy_post": {
-    "titulo": "Título o encabezado corto para el anuncio/post.",
-    "cuerpo": "Texto principal descriptivo y persuasivo (equivalente a 15–20 segundos de lectura).",
-    "cta": "Llamado a la acción claro y específico."
+    "titulo": "Título corto y llamativo para el anuncio/post.",
+    "cuerpo": "Texto persuasivo (máx 150 caracteres).",
+    "cta": "Llamado a la acción específico."
   }
 }
 
 Reglas:
-- Escribe SIEMPRE en español latino, tono profesional pero cercano.
-- Mantén la duración objetivo del guion entre 15 y 20 segundos en total.
-- Las fotos REALES del producto son tu referencia visual principal. Describe el producto tal como
-  se ve en esas fotos (colores, diseño, forma) para que la IA de video genere imágenes fieles al
-  producto real.
-- En las "instrucciones_ia_video" incluye SIEMPRE una descripción visual detallada del producto
-  real (color, forma, diseño específico) para que la IA de video lo reproduzca correctamente.
-- No inventes características visuales del producto que no se vean en las imágenes proporcionadas.
+- El runway_prompt es lo más importante — debe ser un prompt completo, preciso y ejecutable.
+- guion_voz en español latino, 3 frases cortas que narran el video de 10 segundos.
+- copy_post en español latino, tono profesional y cercano.
+- NUNCA menciones personas, modelos, mujeres u hombres en el runway_prompt si no hay personas en la imagen.
+- Usa SIEMPRE verbos de acción en presente continuo en el runway_prompt.
+- No inventes elementos que no estén en la imagen o en la ficha del producto.
 - No agregues texto fuera del JSON ni comentarios adicionales.
 `
 
-  const contextoTexto =
-    contexto && Object.keys(contexto).length
-      ? `Producto: ${contexto.nombre || ''}. ${contexto.descripcion || ''}. Ángulo de campaña: ${contexto.angulo || ''}.`
-      : ""
+  // Construir contexto completo del producto
+  const partesFicha = []
+  if (contexto.nombre) partesFicha.push(`Nombre: ${contexto.nombre}`)
+  if (contexto.tipo) partesFicha.push(`Tipo: ${contexto.tipo}`)
+  if (contexto.descripcion) partesFicha.push(`Descripción: ${contexto.descripcion}`)
+  if (Array.isArray(contexto.usos) && contexto.usos.length)
+    partesFicha.push(`Usos: ${contexto.usos.join(', ')}`)
+  if (Array.isArray(contexto.caracteristicas) && contexto.caracteristicas.length)
+    partesFicha.push(`Características: ${contexto.caracteristicas.join(', ')}`)
+  if (contexto.angulo) partesFicha.push(`Ángulo de campaña: ${contexto.angulo}`)
+  if (contexto.anguloDescripcion) partesFicha.push(`Enfoque del ángulo: ${contexto.anguloDescripcion}`)
+  const fichaProducto = partesFicha.length ? partesFicha.join('\n') : ''
+
+  const copyBaseTexto = copyBase
+    ? `\nCOPY BASE DEL ÁNGULO (mantén coherencia de mensaje y tono con este copy):\n- Etapa: ${copyBase.etapa || ''}\n- Idea central: ${copyBase.idea_central || ''}\n- Título: ${copyBase.titulo || ''}\n- Cuerpo: ${copyBase.cuerpo || ''}\n- CTA: ${copyBase.cta || ''}`
+    : ""
 
   // Construir el contenido del mensaje de usuario con imágenes reales del producto primero
   const contenidoUsuario = []
 
-  const textoIntro = contextoTexto
-    ? `Genera el mejor copy posible para este producto siguiendo el formato JSON indicado. ${contextoTexto} IMPORTANTE: Las imágenes a continuación son fotos REALES del producto. Úsalas como referencia visual principal para describir escenas, colores, diseño y características visuales del producto con fidelidad.`
-    : "Genera el mejor copy posible para este producto siguiendo el formato JSON indicado. IMPORTANTE: Las imágenes a continuación son fotos REALES del producto. Úsalas como referencia visual principal."
+  const textoIntro = [
+    "Genera el mejor copy posible para este producto siguiendo el formato JSON indicado.",
+    fichaProducto ? `\nFICHA DEL PRODUCTO:\n${fichaProducto}` : "",
+    copyBaseTexto,
+    "\nIMPORTANTE: Las imágenes a continuación son fotos REALES del producto. Analiza visualmente lo que ves — colores exactos, diseño, patrones, ambiente — y úsalos como base para las escenas, el runway_prompt y las instrucciones del video. No describas elementos que no estén presentes en las imágenes.",
+  ].filter(Boolean).join('')
 
   contenidoUsuario.push({ type: "text", text: textoIntro })
 
@@ -465,7 +471,7 @@ Reglas:
       type: "text",
       text: "Esta es la imagen creativa AI generada para el copy (úsala como referencia de escena y ambiente):",
     })
-    contenidoUsuario.push({ type: "image_url", image_url: { url: imagenDataUrl, detail: "low" } })
+    contenidoUsuario.push({ type: "image_url", image_url: { url: imagenDataUrl, detail: "high" } })
   }
 
   const mensajes = [

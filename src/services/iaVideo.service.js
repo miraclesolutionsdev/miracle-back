@@ -1,115 +1,98 @@
-import "isomorphic-fetch"
+import RunwayML from "@runwayml/sdk"
 
-const XAI_API_KEY = process.env.XAI_API_KEY
+const RUNWAY_API_KEY = process.env.RUNWAY_API_KEY
 
-if (!XAI_API_KEY) {
+if (!RUNWAY_API_KEY) {
   console.warn(
-    "[iaVideo.service] XAI_API_KEY no está configurada. Las solicitudes de video fallarán.",
+    "[iaVideo.service] RUNWAY_API_KEY no está configurada. Las solicitudes de video con Runway fallarán.",
   )
 }
 
-const GROK_VIDEO_ENDPOINT = "https://api.x.ai/v1/videos/generations"
-const GROK_VIDEO_STATUS_BASE = "https://api.x.ai/v1/videos"
-
 /**
- * Construye un prompt de video optimizado a partir del copy generado/editado.
- * Extrae la esencia narrativa para que Grok genere movimiento de cámara coherente.
- */
-function construirPromptVideo(copyTexto) {
-  return `Animate this exact product photo into a short 10-second vertical advertising video (9:16).
-
-CRITICAL: The reference image IS the real product. Keep the product's exact appearance: same colors, same design, same patterns, same clothing style. Do NOT replace or reinvent the product with a different version.
-
-Creative direction based on the following script:
-${copyTexto.trim()}
-
-PRODUCTION RULES:
-- Keep the product visually identical to the reference image at all times
-- Animate naturally: subtle movements, camera pan, clothing texture detail, warm lighting
-- Cinematic, professional advertising quality
-- No text overlays
-- Vertical 9:16 format for Reels and TikTok`.trim()
-}
-
-/**
- * Inicia la generación de un video en Grok a partir de un copy y una imagen.
+ * Inicia la generación de un video en RunwayML (image-to-video).
+ * Devuelve el task ID inmediatamente para que el frontend pueda hacer polling.
  * @param {object} payload
- * @param {string} payload.prompt - Copy generado o editado por el usuario (hook + guion + ideas).
- * @param {string} payload.imageUrl - URL o data URL de la imagen base.
+ * @param {string} payload.promptText - Descripción del video a generar.
+ * @param {string} payload.imageUrl   - URL pública de la imagen de referencia.
+ * @param {string} [payload.ratio]    - Proporción: "1280:720" | "720:1280" | "1:1". Default: "1280:720".
+ * @param {number} [payload.duration] - Duración en segundos: 5 | 10. Default: 5.
  */
-export async function iniciarVideoGrok({ prompt, imageUrl }) {
-  if (!XAI_API_KEY) {
-    throw new Error("XAI_API_KEY no configurada en el backend")
-  }
+// El copyTexto que llega ya es el runway_prompt generado directamente por la IA en inglés.
+// Solo necesitamos limpiar referencias a personas por si acaso y truncar al límite de Runway.
+const PERSONA_REGEX = /\b(wearing|a woman|a man|a girl|a boy|a person|the model|person wearing|someone wearing)\b/gi
 
-  if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
-    throw new Error("Se requiere un 'prompt' no vacío para generar el video")
-  }
+function construirPromptRunway(copyTexto) {
+  const limpio = copyTexto
+    .replace(PERSONA_REGEX, 'the product')
+    .trim()
+  return limpio.slice(0, 999)
+}
 
-  if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.trim()) {
-    throw new Error("Se requiere 'imageUrl' para generar el video")
-  }
+export async function iniciarVideoRunway({ copyTexto, imageUrl, ratio = "720:1280", duration = 10 }) {
+  if (!RUNWAY_API_KEY) throw new Error("RUNWAY_API_KEY no configurada en el backend")
+  if (!copyTexto?.trim()) throw new Error("Se requiere 'copyTexto' para generar el video con Runway")
+  if (!imageUrl?.trim()) throw new Error("Se requiere 'imageUrl' para generar el video con Runway")
 
-  const promptVideo = construirPromptVideo(prompt)
+  const client = new RunwayML({ apiKey: RUNWAY_API_KEY })
+  const promptFinal = construirPromptRunway(copyTexto)
 
-  const body = {
-    model: "grok-imagine-video",
-    prompt: promptVideo,
-    image_url: imageUrl.trim(),
-    duration: 10,
-    resolution: "720p",
-  }
-
-  const response = await fetch(GROK_VIDEO_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${XAI_API_KEY}`,
-    },
-    body: JSON.stringify(body),
+  const task = await client.imageToVideo.create({
+    model: "gen4_turbo",
+    promptImage: imageUrl.trim(),
+    promptText: promptFinal,
+    ratio,
+    duration,
   })
 
-  if (!response.ok) {
-    const errText = await response.text()
-    throw new Error(
-      `Error al llamar a Grok (video): ${response.status} - ${errText}`,
-    )
-  }
-
-  // Devolvemos la respuesta tal cual para que el frontend decida qué mostrar (id, url, etc.)
-  return response.json()
+  return { id: task.id, status: task.status }
 }
 
 /**
- * Consulta el estado de un video generado en Grok.
- * @param {string} requestId - Identificador devuelto al iniciar el video.
+ * Consulta el estado de un task de RunwayML.
+ * El frontend debe hacer polling cada ~5s hasta que status sea "SUCCEEDED" o "FAILED".
+ * @param {string} taskId
  */
-export async function obtenerEstadoVideoGrok(requestId) {
-  if (!XAI_API_KEY) {
-    throw new Error("XAI_API_KEY no configurada en el backend")
-  }
+export async function generarVozRunway({ texto, voiceId = "Maya" }) {
+  if (!RUNWAY_API_KEY) throw new Error("RUNWAY_API_KEY no configurada en el backend")
+  if (!texto?.trim()) throw new Error("Se requiere 'texto' para generar la voz")
 
-  if (!requestId || typeof requestId !== "string" || !requestId.trim()) {
-    throw new Error("Se requiere un 'requestId' válido para consultar el video")
-  }
-
-  const url = `${GROK_VIDEO_STATUS_BASE}/${encodeURIComponent(requestId.trim())}`
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${XAI_API_KEY}`,
-    },
+  const client = new RunwayML({ apiKey: RUNWAY_API_KEY })
+  const task = await client.textToSpeech.create({
+    model: "eleven_multilingual_v2",
+    promptText: texto.trim().slice(0, 1000),
+    voice: { type: "runway-preset", presetId: voiceId },
   })
+  return { id: task.id, status: task.status }
+}
 
-  if (!response.ok) {
-    const errText = await response.text()
-    throw new Error(
-      `Error al consultar estado del video en Grok: ${response.status} - ${errText}`,
-    )
+export async function obtenerEstadoVozRunway(taskId) {
+  if (!RUNWAY_API_KEY) throw new Error("RUNWAY_API_KEY no configurada en el backend")
+  if (!taskId?.trim()) throw new Error("Se requiere 'taskId' para consultar la voz")
+
+  const client = new RunwayML({ apiKey: RUNWAY_API_KEY })
+  const task = await client.tasks.retrieve(taskId.trim())
+  return {
+    id: task.id,
+    status: task.status,
+    url: task.output?.[0] ?? null,
+    error: task.failure ?? null,
   }
+}
 
-  return response.json()
+export async function obtenerEstadoVideoRunway(taskId) {
+  if (!RUNWAY_API_KEY) throw new Error("RUNWAY_API_KEY no configurada en el backend")
+  if (!taskId?.trim()) throw new Error("Se requiere 'taskId' para consultar el video de Runway")
+
+  const client = new RunwayML({ apiKey: RUNWAY_API_KEY })
+  const task = await client.tasks.retrieve(taskId.trim())
+
+  // Cuando termina, task.output contiene la URL del video
+  return {
+    id: task.id,
+    status: task.status,
+    url: task.output?.[0] ?? null,
+    error: task.failure ?? null,
+  }
 }
 
 
