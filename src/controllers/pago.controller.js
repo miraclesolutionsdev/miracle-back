@@ -7,7 +7,7 @@ const client = new MercadoPagoConfig({
 
 export async function crearPreferencia(req, res) {
   try {
-    const { productoId, nombre, telefono } = req.body
+    const { productoId } = req.body
 
     if (!productoId) {
       return res.status(400).json({ error: 'productoId es requerido' })
@@ -21,7 +21,7 @@ export async function crearPreferencia(req, res) {
       return res.status(400).json({ error: 'Producto no disponible' })
     }
 
-    const FRONT_URL = process.env.FRONT_URL || 'https://miracle-front-jade.vercel.app'
+    const FRONT_URL = process.env.FRONT_URL || 'https://www.miraclesolutions.com.co'
 
     const preference = new Preference(client)
     const result = await preference.create({
@@ -36,22 +36,15 @@ export async function crearPreferencia(req, res) {
             currency_id: 'COP',
           },
         ],
-        payer: {
-          name: nombre || '',
-          phone: telefono ? { number: telefono } : undefined,
-        },
         back_urls: {
           success: `${FRONT_URL}/pago/exitoso`,
           failure: `${FRONT_URL}/pago/fallido`,
           pending: `${FRONT_URL}/pago/pendiente`,
         },
-        auto_return: 'approved',
+        ...(FRONT_URL.startsWith('https') && { auto_return: 'approved' }),
         statement_descriptor: 'Miracle Solutions',
         metadata: {
-          producto_id: producto._id.toString(),
-          producto_nombre: producto.nombre,
-          comprador_nombre: nombre || '',
-          comprador_telefono: telefono || '',
+          productoId: producto._id.toString(),
         },
       },
     })
@@ -64,28 +57,43 @@ export async function crearPreferencia(req, res) {
 }
 
 export async function recibirWebhook(req, res) {
-  // Mercado Pago espera un 200 rápido para no reintentar
-  res.sendStatus(200)
-
   try {
     const { type, data } = req.body
+    console.log('[MP] Webhook recibido:', JSON.stringify(req.body))
 
-    if (type !== 'payment' || !data?.id) return
+    if (type !== 'payment' || !data?.id) {
+      console.log('[MP] Webhook ignorado — type:', type, 'data.id:', data?.id)
+      return res.sendStatus(200)
+    }
+
+    const paymentId = Number(data.id)
+    console.log('[MP] Consultando pago ID:', paymentId)
 
     const paymentApi = new Payment(client)
-    const pago = await paymentApi.get({ id: data.id })
+    const pago = await paymentApi.get({ id: paymentId })
+    console.log('[MP] Estado del pago:', pago.status, '| metadata:', JSON.stringify(pago.metadata))
 
-    if (pago.status !== 'approved') return
-
-    const productoId = pago.metadata?.producto_id
-    if (!productoId) return
-
-    const producto = await Producto.findById(productoId)
-    if (!producto || producto.stock <= 0) return
-
-    await Producto.findByIdAndUpdate(productoId, { $inc: { stock: -1 } })
-    console.log(`[MP] Stock decrementado para producto ${productoId}`)
+    if (pago.status === 'approved') {
+      const productoId = pago.metadata?.producto_id || pago.metadata?.productoId
+      if (!productoId) {
+        console.log('[MP] No se encontró productoId en metadata')
+      } else {
+        const producto = await Producto.findById(productoId)
+        if (!producto) {
+          console.log('[MP] Producto no encontrado:', productoId)
+        } else if (producto.stock <= 0) {
+          console.log('[MP] Sin stock para producto:', productoId)
+        } else {
+          await Producto.findByIdAndUpdate(productoId, { $inc: { stock: -1 } })
+          console.log(`[MP] Stock decrementado — producto ${productoId}, stock anterior: ${producto.stock}`)
+        }
+      }
+    } else {
+      console.log('[MP] Pago no aprobado, ignorando. Status:', pago.status)
+    }
   } catch (err) {
-    console.error('[MP] Error al procesar webhook:', err)
+    console.error('[MP] Error en webhook:', err.message)
   }
+
+  res.sendStatus(200)
 }

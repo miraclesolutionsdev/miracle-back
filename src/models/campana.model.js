@@ -10,7 +10,7 @@ const campanaSchema = new mongoose.Schema(
     producto: { type: String, trim: true, default: "" },
     piezaCreativo: { type: String, trim: true, default: "" },
     plataforma: { type: String, trim: true, default: "" },
-    miracleCoins: { type: String, trim: true, default: "" },
+    miracleCoins: { type: Number, default: 0 },
     estado: {
       type: String,
       enum: ["borrador", "activa", "pausada", "finalizada"],
