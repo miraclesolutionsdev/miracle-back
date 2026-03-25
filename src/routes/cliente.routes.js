@@ -1,12 +1,10 @@
 import { Router } from "express"
-import {
-  listarTodos,
-  obtenerUno,
-  crear,
-  actualizar,
-} from "../controllers/cliente.controller.js"
+import { requireAuth } from "../middleware/auth.middleware.js"
+import { listarTodos, obtenerUno, crear, actualizar } from "../controllers/cliente.controller.js"
 
 const router = Router()
+
+router.use(requireAuth)
 
 router.get("/", listarTodos)
 router.get("/:id", obtenerUno)

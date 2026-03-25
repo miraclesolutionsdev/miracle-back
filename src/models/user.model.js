@@ -13,7 +13,7 @@ const userSchema = new mongoose.Schema(
     tenantId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Tenant",
-      required: [true, "El tenant es obligatorio"],
+      default: null,
     },
     activo: { type: Boolean, default: true },
     isOriginalAdmin: { type: Boolean, default: false },
@@ -21,6 +21,6 @@ const userSchema = new mongoose.Schema(
   { timestamps: true, collection: "users" }
 )
 
-userSchema.index({ email: 1, tenantId: 1 }, { unique: true })
+userSchema.index({ email: 1 }, { unique: true })
 
 export default mongoose.model("User", userSchema)

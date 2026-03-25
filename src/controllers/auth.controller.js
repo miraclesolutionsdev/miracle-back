@@ -7,9 +7,9 @@ import { obtenerPresignedPutLogo } from "../services/s3.service.js"
 const JWT_SECRET = process.env.JWT_SECRET || "tu-clave-secreta-cambiar-en-produccion"
 const SALT_ROUNDS = 10
 
-/** Determina si userId es el administrador original del tenant */
-async function resolveIsOriginalAdmin(tenantId, userId) {
-  const users = await User.find({ tenantId })
+/** Determina si userId es el administrador original (el primero creado o el marcado en BD). */
+async function resolveIsOriginalAdmin(userId) {
+  const users = await User.find({})
     .select("_id isOriginalAdmin")
     .sort({ createdAt: 1 })
     .lean()
@@ -32,66 +32,31 @@ export async function login(req, res) {
     }
     const user = await User.findOne({ email: emailNorm }).select("+password")
     if (!user) return res.status(401).json({ error: "Credenciales inválidas" })
-    if (user.activo === false) return res.status(401).json({ error: "Cuenta deshabilitada. Contacta al administrador." })
+    if (user.activo === false) {
+      return res.status(401).json({ error: "Cuenta deshabilitada. Contacta al administrador." })
+    }
     const ok = await bcrypt.compare(password, user.password)
     if (!ok) return res.status(401).json({ error: "Credenciales inválidas" })
+
     const token = jwt.sign(
-      { userId: user._id.toString(), tenantId: user.tenantId.toString() },
+      { userId: user._id.toString() },
       JWT_SECRET,
       { expiresIn: "7d" }
     )
+
     const [tenant, isOriginal] = await Promise.all([
-      Tenant.findById(user.tenantId),
-      resolveIsOriginalAdmin(user.tenantId, user._id),
+      Tenant.findOne().lean(),
+      resolveIsOriginalAdmin(user._id),
     ])
+
     res.json({
       token,
       user: {
         id: user._id.toString(),
         email: user.email,
         nombre: user.nombre,
-        tenantId: user.tenantId.toString(),
         tenantNombre: tenant?.nombre || "",
         isOriginalAdmin: isOriginal,
-      },
-    })
-  } catch (error) {
-    res.status(500).json({ error: error.message })
-  }
-}
-
-export async function register(req, res) {
-  try {
-    const { email, password, nombre, tenantId } = req.body
-    const emailNorm = (email || "").trim().toLowerCase()
-    if (!emailNorm || !password || !tenantId) {
-      return res.status(400).json({ error: "Email, contraseña y tenantId son obligatorios" })
-    }
-    const exists = await User.findOne({ email: emailNorm, tenantId })
-    if (exists) {
-      return res.status(409).json({ error: "Ya existe un usuario con ese email en este tenant" })
-    }
-    const hash = await bcrypt.hash(password, SALT_ROUNDS)
-    const user = await User.create({
-      email: emailNorm,
-      password: hash,
-      nombre: (nombre || "").trim(),
-      tenantId,
-    })
-    const tenant = await Tenant.findById(tenantId)
-    const token = jwt.sign(
-      { userId: user._id.toString(), tenantId: user.tenantId.toString() },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    )
-    res.status(201).json({
-      token,
-      user: {
-        id: user._id.toString(),
-        email: user.email,
-        nombre: user.nombre,
-        tenantId: user.tenantId.toString(),
-        tenantNombre: tenant?.nombre || "",
       },
     })
   } catch (error) {
@@ -113,6 +78,11 @@ function slugify(text) {
 
 export async function crearTienda(req, res) {
   try {
+    const alreadyExists = await Tenant.findOne().select("_id").lean()
+    if (alreadyExists) {
+      return res.status(409).json({ error: "La tienda ya fue creada. Inicia sesión para acceder." })
+    }
+
     const { nombreTienda, email, password, nombre } = req.body
     const nombreTiendaTrim = (nombreTienda || "").trim()
     const emailNorm = (email || "").trim().toLowerCase()
@@ -122,6 +92,12 @@ export async function crearTienda(req, res) {
     if (!emailNorm || !password) {
       return res.status(400).json({ error: "Email y contraseña son obligatorios" })
     }
+
+    const existingEmail = await User.findOne({ email: emailNorm })
+    if (existingEmail) {
+      return res.status(409).json({ error: "Ese email ya está registrado. Inicia sesión." })
+    }
+
     let baseSlug = slugify(nombreTiendaTrim)
     let slug = baseSlug
     let counter = 0
@@ -129,23 +105,9 @@ export async function crearTienda(req, res) {
       counter += 1
       slug = `${baseSlug}-${counter}`
     }
-    const tenant = await Tenant.create({
-      nombre: nombreTiendaTrim,
-      slug,
-    })
-    const exists = await User.findOne({ email: emailNorm, tenantId: tenant._id })
-    if (exists) {
-      await Tenant.findByIdAndDelete(tenant._id)
-      return res.status(409).json({ error: "Ya existe un usuario con ese email en esta tienda" })
-    }
-    const globalEmailExists = await User.findOne({ email: emailNorm })
-    if (globalEmailExists) {
-      await Tenant.findByIdAndDelete(tenant._id)
-      return res.status(409).json({
-        error: "Ese email ya está registrado en otra tienda. Usa otro email o inicia sesión en la tienda correspondiente.",
-      })
-    }
-    const count = await User.countDocuments({ tenantId: tenant._id })
+
+    const tenant = await Tenant.create({ nombre: nombreTiendaTrim, slug })
+
     const hash = await bcrypt.hash(password, SALT_ROUNDS)
     const user = await User.create({
       email: emailNorm,
@@ -153,22 +115,24 @@ export async function crearTienda(req, res) {
       nombre: (nombre || "").trim() || nombreTiendaTrim,
       tenantId: tenant._id,
       activo: true,
-      isOriginalAdmin: count === 0,
+      isOriginalAdmin: true,
     })
+
     const token = jwt.sign(
-      { userId: user._id.toString(), tenantId: user.tenantId.toString() },
+      { userId: user._id.toString(), tenantId: tenant._id.toString() },
       JWT_SECRET,
       { expiresIn: "7d" }
     )
+
     res.status(201).json({
       token,
       user: {
         id: user._id.toString(),
         email: user.email,
         nombre: user.nombre,
-        tenantId: user.tenantId.toString(),
+        tenantId: tenant._id.toString(),
         tenantNombre: tenant.nombre,
-        isOriginalAdmin: true, // siempre es el primero del tenant
+        isOriginalAdmin: true,
       },
     })
   } catch (error) {
@@ -179,20 +143,21 @@ export async function crearTienda(req, res) {
 export async function obtenerPerfil(req, res) {
   try {
     const userId = req.userId
-    const tenantId = req.tenantId
-    if (!userId || !tenantId) return res.status(401).json({ error: "No autorizado" })
+    if (!userId) return res.status(401).json({ error: "No autorizado" })
+
     const user = await User.findById(userId).select("-password").lean()
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" })
+
     const [tenant, isOriginal] = await Promise.all([
-      Tenant.findById(tenantId).lean(),
-      resolveIsOriginalAdmin(tenantId, userId),
+      Tenant.findOne().lean(),
+      resolveIsOriginalAdmin(userId),
     ])
+
     res.json({
       user: {
         id: user._id.toString(),
         email: user.email,
         nombre: user.nombre ?? "",
-        tenantId: user.tenantId.toString(),
         tenantNombre: tenant?.nombre ?? "",
         isOriginalAdmin: isOriginal,
       },
@@ -226,32 +191,31 @@ export async function obtenerPerfil(req, res) {
 export async function actualizarPerfil(req, res) {
   try {
     const userId = req.userId
-    const tenantId = req.tenantId
-    if (!userId || !tenantId) return res.status(401).json({ error: "No autorizado" })
+    if (!userId) return res.status(401).json({ error: "No autorizado" })
+
     const { email, nombre } = req.body
     const emailNorm = (email ?? "").trim().toLowerCase()
     const updates = {}
+
     if (emailNorm) {
-      const exists = await User.findOne({
-        email: emailNorm,
-        tenantId,
-        _id: { $ne: userId },
-      })
-      if (exists) return res.status(409).json({ error: "Ya existe un usuario con ese email en esta tienda" })
+      const exists = await User.findOne({ email: emailNorm, _id: { $ne: userId } })
+      if (exists) return res.status(409).json({ error: "Ya existe un usuario con ese email" })
       updates.email = emailNorm
     }
     if (nombre !== undefined) updates.nombre = (nombre ?? "").trim()
+
     const user = await User.findByIdAndUpdate(userId, updates, { new: true })
       .select("-password")
       .lean()
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" })
-    const tenant = await Tenant.findById(tenantId).lean()
+
+    const tenant = await Tenant.findOne().lean()
+
     res.json({
       user: {
         id: user._id.toString(),
         email: user.email,
         nombre: user.nombre ?? "",
-        tenantId: user.tenantId.toString(),
         tenantNombre: tenant?.nombre ?? "",
       },
     })
@@ -264,6 +228,7 @@ export async function cambiarPassword(req, res) {
   try {
     const userId = req.userId
     if (!userId) return res.status(401).json({ error: "No autorizado" })
+
     const { contraseñaActual, nuevaContraseña } = req.body
     if (!contraseñaActual || !nuevaContraseña) {
       return res.status(400).json({ error: "Contraseña actual y nueva son obligatorias" })
@@ -271,10 +236,13 @@ export async function cambiarPassword(req, res) {
     if (nuevaContraseña.length < 6) {
       return res.status(400).json({ error: "La nueva contraseña debe tener al menos 6 caracteres" })
     }
+
     const user = await User.findById(userId).select("+password")
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" })
+
     const ok = await bcrypt.compare(contraseñaActual, user.password)
     if (!ok) return res.status(401).json({ error: "Contraseña actual incorrecta" })
+
     const hash = await bcrypt.hash(nuevaContraseña, SALT_ROUNDS)
     await User.updateOne({ _id: userId }, { password: hash })
     res.json({ ok: true, message: "Contraseña actualizada" })
@@ -285,37 +253,18 @@ export async function cambiarPassword(req, res) {
 
 export async function actualizarTenant(req, res) {
   try {
-    const tenantId = req.tenantId
-    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
-    const {
-      nombre,
-      logoUrl,
-      descripcion,
-      eslogan,
-      categoria,
-      productosPrincipales,
-    } = req.body
-
+    const { nombre, logoUrl, descripcion, eslogan, categoria, productosPrincipales } = req.body
     const updates = {}
+
     if (nombre !== undefined) {
       const nombreTrim = (nombre ?? "").trim()
-      if (!nombreTrim) {
-        return res.status(400).json({ error: "El nombre de la tienda es obligatorio" })
-      }
+      if (!nombreTrim) return res.status(400).json({ error: "El nombre de la tienda es obligatorio" })
       updates.nombre = nombreTrim
     }
-    if (logoUrl !== undefined) {
-      updates.logoUrl = (logoUrl ?? "").trim()
-    }
-    if (descripcion !== undefined) {
-      updates.descripcion = (descripcion ?? "").trim()
-    }
-    if (eslogan !== undefined) {
-      updates.eslogan = (eslogan ?? "").trim()
-    }
-    if (categoria !== undefined) {
-      updates.categoria = (categoria ?? "").trim()
-    }
+    if (logoUrl !== undefined) updates.logoUrl = (logoUrl ?? "").trim()
+    if (descripcion !== undefined) updates.descripcion = (descripcion ?? "").trim()
+    if (eslogan !== undefined) updates.eslogan = (eslogan ?? "").trim()
+    if (categoria !== undefined) updates.categoria = (categoria ?? "").trim()
     if (productosPrincipales !== undefined) {
       updates.productosPrincipales = Array.isArray(productosPrincipales)
         ? productosPrincipales.map((p) => (p ?? "").toString().trim()).filter(Boolean)
@@ -326,8 +275,9 @@ export async function actualizarTenant(req, res) {
       return res.status(400).json({ error: "No hay cambios para actualizar" })
     }
 
-    const tenant = await Tenant.findByIdAndUpdate(tenantId, updates, { new: true }).lean()
+    const tenant = await Tenant.findOneAndUpdate({}, updates, { new: true }).lean()
     if (!tenant) return res.status(404).json({ error: "Tienda no encontrada" })
+
     res.json({
       tenant: {
         id: tenant._id.toString(),
@@ -346,17 +296,16 @@ export async function actualizarTenant(req, res) {
 }
 
 /**
- * Devuelve una URL firmada para subir el logo del tenant actual a S3.
- * No modifica la BD; el frontend debe luego llamar a actualizarTenant con logoUrl = publicUrl.
+ * Devuelve una URL firmada para subir el logo de la tienda a S3.
+ * El frontend debe luego llamar a actualizarTenant con logoUrl = publicUrl.
  */
 export async function obtenerPresignedLogoTenant(req, res) {
   try {
-    const tenantId = req.tenantId
-    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { filename, contentType } = req.body || {}
     const name = (filename || "").trim() || "logo.png"
     const type = (contentType || "").trim() || "image/png"
-    const { uploadUrl, key, publicUrl } = await obtenerPresignedPutLogo(tenantId, name, type)
+
+    const { uploadUrl, key, publicUrl } = await obtenerPresignedPutLogo("miracle", name, type)
     res.json({ uploadUrl, key, publicUrl })
   } catch (error) {
     res.status(500).json({ error: error.message })

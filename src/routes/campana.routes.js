@@ -4,7 +4,6 @@ import { requireAuth } from "../middleware/auth.middleware.js"
 
 const router = Router()
 
-// Todas las rutas de campañas requieren autenticación para tener tenantId
 router.use(requireAuth)
 
 router.get("/", listar)

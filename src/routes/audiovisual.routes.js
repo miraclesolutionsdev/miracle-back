@@ -15,7 +15,6 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 },
 })
 
-// Todas las rutas de audiovisual requieren autenticación para tener tenantId
 router.use(requireAuth)
 
 router.get("/", listar)

@@ -10,6 +10,8 @@ import userRoutes from "./src/routes/user.routes.js"
 import campanaRoutes from "./src/routes/campana.routes.js"
 import iaRoutes from "./src/routes/ia.routes.js"
 import pagoRoutes from "./src/routes/pago.routes.js"
+import ventaRoutes from "./src/routes/venta.routes.js"
+import ordenRoutes from "./src/routes/orden.routes.js"
 
 const app = express()
 
@@ -64,6 +66,12 @@ app.use("/ia", iaRoutes)
 
 // Pagos (MercadoPago)
 app.use("/pagos", pagoRoutes)
+
+// Órdenes
+app.use("/ordenes", ordenRoutes)
+
+// Ventas
+app.use("/ventas", ventaRoutes)
 
 // Puerto - solo para desarrollo local (Vercel usa serverless)
 const PORT = process.env.PORT || 3000

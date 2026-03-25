@@ -23,13 +23,11 @@ function toResponse(doc) {
 
 export async function listar(req, res) {
   try {
-    const tenantId = req.tenantId
-    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { estado, tipo } = req.query
-    const filter = { tenantId }
+    const filter = {}
     if (estado) filter.estado = estado
     if (tipo) filter.tipo = tipo
-    const piezas = await PiezaAudiovisual.find(filter).sort({ createdAt: -1 })
+    const piezas = await PiezaAudiovisual.find(filter).sort({ createdAt: -1 }).lean()
     res.json(piezas.map(toResponse))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -38,16 +36,13 @@ export async function listar(req, res) {
 
 export async function crear(req, res) {
   try {
-    const tenantId = req.tenantId
-    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { tipo, plataforma, resolucion, duracion, campanaAsociada } = req.body
     const file = req.file
 
     if (!tipo || !plataforma) {
       return res.status(400).json({ error: "Faltan campos: tipo, plataforma" })
     }
-
-    if (!file || !file.buffer) {
+    if (!file?.buffer) {
       return res.status(400).json({ error: "Debe adjuntar un archivo (video o imagen)" })
     }
 
@@ -63,7 +58,6 @@ export async function crear(req, res) {
     )
 
     const pieza = await PiezaAudiovisual.create({
-      tenantId: req.tenantId,
       tipo: tipo === "Imagen" ? "Imagen" : "Video",
       plataforma: (plataforma || "").trim(),
       formato: (formato || "").trim(),
@@ -100,14 +94,13 @@ export async function confirmarSubida(req, res) {
     if (!publicUrl && !key) {
       return res.status(400).json({ error: "Falta publicUrl o key del archivo en S3" })
     }
+
     const formato =
       tipo === "Video" && resolucion && (duracion != null && duracion !== "")
         ? `${resolucion} · ${duracion}s`
         : (resolucion || "").trim()
-    const tenantId = req.tenantId
-    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
+
     const pieza = await PiezaAudiovisual.create({
-      tenantId,
       tipo: tipo === "Imagen" ? "Imagen" : "Video",
       plataforma: (plataforma || "").trim(),
       formato,
@@ -116,6 +109,7 @@ export async function confirmarSubida(req, res) {
       url: (publicUrl || "").trim() || key,
       contentType: (contentType || "").trim() || "application/octet-stream",
     })
+
     res.status(201).json(toResponse(pieza))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -130,19 +124,11 @@ export async function actualizarEstado(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID no válido" })
     }
-
     if (!["pendiente", "aprobada", "usada"].includes(estado)) {
       return res.status(400).json({ error: "Estado no válido" })
     }
 
-    const tenantId = req.tenantId
-    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
-    const pieza = await PiezaAudiovisual.findOneAndUpdate(
-      { _id: id, tenantId },
-      { estado },
-      { new: true }
-    )
-
+    const pieza = await PiezaAudiovisual.findByIdAndUpdate(id, { estado }, { new: true }).lean()
     if (!pieza) return res.status(404).json({ error: "Pieza no encontrada" })
     res.json(toResponse(pieza))
   } catch (error) {

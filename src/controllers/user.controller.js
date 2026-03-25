@@ -17,9 +17,9 @@ function toSafeUser(doc, effectiveOriginal = null) {
   }
 }
 
-/** True si el usuario es el administrador original del tenant (el primero creado o el marcado en BD). */
-async function isOriginalAdmin(tenantId, userId) {
-  const users = await User.find({ tenantId }).select("_id isOriginalAdmin").sort({ createdAt: 1 }).lean()
+/** True si el usuario es el administrador original (el primero creado o el marcado en BD). */
+async function isOriginalAdmin(userId) {
+  const users = await User.find({}).select("_id isOriginalAdmin").sort({ createdAt: 1 }).lean()
   if (!users.length) return false
   const targetId = userId.toString ? userId.toString() : String(userId)
   const target = users.find((u) => u._id.toString() === targetId)
@@ -32,12 +32,7 @@ async function isOriginalAdmin(tenantId, userId) {
 
 export async function listar(req, res) {
   try {
-    const tenantId = req.tenantId
-    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
-    const users = await User.find({ tenantId })
-      .select("-password")
-      .sort({ createdAt: 1 })
-      .lean()
+    const users = await User.find({}).select("-password").sort({ createdAt: 1 }).lean()
     const hasAnyOriginal = users.some((u) => u.isOriginalAdmin === true)
     const firstId = users[0]?._id?.toString()
     res.json(
@@ -54,53 +49,47 @@ export async function listar(req, res) {
 
 export async function crear(req, res) {
   try {
-    const tenantId = req.tenantId
-    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
     const { email, password, nombre } = req.body
     const emailNorm = (email || "").trim().toLowerCase()
     if (!emailNorm || !password) {
       return res.status(400).json({ error: "Email y contraseña son obligatorios" })
     }
-    const exists = await User.findOne({ email: emailNorm, tenantId })
+    const exists = await User.findOne({ email: emailNorm })
     if (exists) {
-      return res.status(409).json({ error: "Ya existe un usuario con ese email en esta tienda" })
+      return res.status(409).json({ error: "Ya existe un usuario con ese email" })
     }
-    const count = await User.countDocuments({ tenantId })
     const hash = await bcrypt.hash(password, SALT_ROUNDS)
     const user = await User.create({
       email: emailNorm,
       password: hash,
       nombre: (nombre || "").trim(),
-      tenantId,
+      tenantId: null,
       activo: true,
-      isOriginalAdmin: count === 0,
     })
     res.status(201).json(toSafeUser(user))
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
-  
 }
 
 export async function actualizar(req, res) {
   try {
-    const tenantId = req.tenantId
-    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
+    const requesterId = req.userId
     const { id } = req.params
     const { activo, email, nombre, contraseñaActual, nuevaContraseña } = req.body
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de usuario no válido" })
     }
-    const user = await User.findOne({ _id: id, tenantId })
+    const user = await User.findById(id)
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" })
 
     const update = {}
-    const original = await isOriginalAdmin(tenantId, id)
+    const original = await isOriginalAdmin(id)
 
-    // Si el objetivo es el admin original, solo él mismo puede editarse
+    // Solo el admin original puede editar su propia cuenta
     if (original) {
-      const requesterId = req.userId?.toString ? req.userId.toString() : String(req.userId)
-      const requesterIsOriginal = await isOriginalAdmin(tenantId, requesterId)
+      const requesterIsOriginal = await isOriginalAdmin(requesterId)
       if (!requesterIsOriginal) {
         return res.status(403).json({ error: "Solo el administrador original puede modificar su propia cuenta" })
       }
@@ -115,12 +104,8 @@ export async function actualizar(req, res) {
     if (email !== undefined) {
       const emailNorm = (email ?? "").trim().toLowerCase()
       if (!emailNorm) return res.status(400).json({ error: "El email es obligatorio" })
-      const exists = await User.findOne({
-        email: emailNorm,
-        tenantId,
-        _id: { $ne: id },
-      })
-      if (exists) return res.status(409).json({ error: "Ya existe un usuario con ese email en esta tienda" })
+      const exists = await User.findOne({ email: emailNorm, _id: { $ne: id } })
+      if (exists) return res.status(409).json({ error: "Ya existe un usuario con ese email" })
       update.email = emailNorm
     }
     if (nombre !== undefined) update.nombre = (nombre ?? "").trim()
@@ -138,13 +123,7 @@ export async function actualizar(req, res) {
       return res.status(400).json({ error: "Para cambiar la contraseña debes indicar la actual y la nueva" })
     }
 
-    const updated = await User.findOneAndUpdate(
-      { _id: id, tenantId },
-      update,
-      { new: true }
-    )
-      .select("-password")
-      .lean()
+    const updated = await User.findByIdAndUpdate(id, update, { new: true }).select("-password").lean()
     res.json(toSafeUser(updated, original))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -153,23 +132,22 @@ export async function actualizar(req, res) {
 
 export async function eliminar(req, res) {
   try {
-    const tenantId = req.tenantId
-    const userId = req.userId
-    if (!tenantId) return res.status(401).json({ error: "No autorizado" })
+    const requesterId = req.userId
     const { id } = req.params
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de usuario no válido" })
     }
-    const user = await User.findOne({ _id: id, tenantId }).lean()
+    const user = await User.findById(id).lean()
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" })
-    const original = await isOriginalAdmin(tenantId, id)
+
+    const original = await isOriginalAdmin(id)
     if (original) {
       return res.status(403).json({ error: "No se puede eliminar al administrador original" })
     }
-    if (user._id.toString() === userId) {
+    if (user._id.toString() === requesterId?.toString()) {
       return res.status(403).json({ error: "No puedes eliminarte a ti mismo" })
     }
-    await User.deleteOne({ _id: id, tenantId })
+    await User.deleteOne({ _id: id })
     res.status(204).send()
   } catch (error) {
     res.status(500).json({ error: error.message })

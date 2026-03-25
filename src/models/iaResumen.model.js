@@ -2,12 +2,6 @@ import mongoose from "mongoose"
 
 const iaResumenSchema = new mongoose.Schema(
   {
-    tenantId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Tenant",
-      required: true,
-      unique: true,
-    },
     producto: {
       type: mongoose.Schema.Types.Mixed,
       default: null,

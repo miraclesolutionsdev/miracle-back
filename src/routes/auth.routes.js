@@ -2,7 +2,6 @@ import { Router } from "express"
 import { requireAuth } from "../middleware/auth.middleware.js"
 import {
   login,
-  register,
   crearTienda,
   obtenerPerfil,
   actualizarPerfil,
@@ -13,7 +12,6 @@ import {
 
 const router = Router()
 router.post("/login", login)
-router.post("/register", register)
 router.post("/crear-tienda", crearTienda)
 router.get("/me", requireAuth, obtenerPerfil)
 router.patch("/me", requireAuth, actualizarPerfil)
