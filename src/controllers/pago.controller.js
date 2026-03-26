@@ -105,10 +105,14 @@ export async function crearPreferencia(req, res) {
 }
 
 export async function recibirWebhook(req, res) {
-  // Validar firma antes de procesar
-  if (!validateWebhookSignature(req)) {
+  // Validar firma SOLO en producción
+  const isProduction = process.env.NODE_ENV === 'production'
+  if (isProduction && !validateWebhookSignature(req)) {
     console.error('[MP] Firma de webhook inválida — solicitud rechazada.')
     return res.status(401).json({ error: 'Firma inválida' })
+  }
+  if (!isProduction) {
+    console.log('[DEV] Validación HMAC omitida en desarrollo')
   }
 
   try {
@@ -233,4 +237,22 @@ export async function recibirWebhook(req, res) {
 
   // Siempre retornar 200 a MercadoPago
   res.sendStatus(200)
+}
+
+// Endpoint para DESARROLLO LOCAL ÚNICAMENTE
+export async function webhookTest(req, res) {
+  // Bloqueado en producción
+  if (process.env.NODE_ENV === 'production') return res.status(403).send('No disponible')
+
+  // Simula un webhook completo de MP
+  const mockWebhookBody = {
+    type: 'payment',
+    data: {
+      id: Math.floor(Math.random() * 1000000000)
+    }
+  }
+
+  // Procesa como si fuera un webhook real
+  req.body = mockWebhookBody
+  return recibirWebhook(req, res)
 }

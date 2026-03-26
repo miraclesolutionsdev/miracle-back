@@ -1,11 +1,12 @@
 import Contador from '../models/contador.model.js'
 
 /**
- * ===== GENERACIÓN DE ORDEN NÚMERO =====
- * Genera números secuenciales: YYYYMMDD-XXX
- * Reset diario automático
+ * Genera un número de orden único con formato YYYYMMDD-XXX
+ * Ejemplo: 20250325-001, 20250325-002
+ *
+ * Usa colección Contador para mantener secuencia diaria.
+ * Cada día reinicia la numeración.
  */
-
 export async function generarNumeroOrden() {
   const hoy = new Date()
   const fechaStr = hoy.toISOString().split('T')[0].replace(/-/g, '') // YYYYMMDD
@@ -13,110 +14,110 @@ export async function generarNumeroOrden() {
   try {
     const contador = await Contador.findByIdAndUpdate(
       'ordenNumero',
-      {
-        $set: { fecha: fechaStr },
-        $inc: { contador: 1 },
-      },
+      [
+        {
+          $set: {
+            fecha: fechaStr,
+            contador: {
+              $cond: [
+                { $eq: ['$fecha', fechaStr] },
+                { $add: ['$contador', 1] }, // Mismo día: incrementar
+                1, // Nuevo día: reiniciar
+              ],
+            },
+          },
+        },
+      ],
       { upsert: true, new: true }
     )
 
-    // Si la fecha cambió desde el último acceso, resetear contador
-    if (contador.fecha !== fechaStr) {
-      const nuevoContador = await Contador.findByIdAndUpdate(
-        'ordenNumero',
-        { fecha: fechaStr, contador: 1 },
-        { new: true }
-      )
-      return `${fechaStr}-${String(nuevoContador.contador).padStart(3, '0')}`
-    }
-
-    return `${fechaStr}-${String(contador.contador).padStart(3, '0')}`
+    const numeroFormateado = String(contador.contador).padStart(3, '0')
+    return `${fechaStr}-${numeroFormateado}`
   } catch (err) {
-    console.error('[OrdenUtils] Error generando número de orden:', err.message)
+    console.error('[generarNumeroOrden] Error:', err.message)
     throw new Error('No se pudo generar número de orden')
   }
 }
 
 /**
- * ===== VALIDACIÓN DE TRANSICIONES DE ESTADO =====
- * Define estados válidos y transiciones permitidas
+ * Valida transiciones de estado permitidas en una Orden
+ * Máquina de estados:
+ *   pendiente → procesando | cancelada
+ *   procesando → completada | cancelada
+ *   completada → entregada | cancelada
+ *   entregada → (solo lectura, sin transiciones)
+ *   cancelada → (solo lectura, sin transiciones)
  */
-
-const TRANSICIONES_VALIDAS = {
-  pendiente: ['procesando', 'cancelada'],
-  procesando: ['completada', 'cancelada'],
-  completada: ['entregada'],
-  entregada: [], // Terminal
-  cancelada: [], // Terminal
-}
-
 export function esTransicionValida(estadoActual, estadoNuevo) {
-  if (!TRANSICIONES_VALIDAS[estadoActual]) {
+  const transicionesPermitidas = {
+    pendiente: ['procesando', 'cancelada'],
+    procesando: ['completada', 'cancelada'],
+    completada: ['entregada', 'cancelada'],
+    entregada: [], // Terminal
+    cancelada: [], // Terminal
+  }
+
+  if (!transicionesPermitidas[estadoActual]) {
+    console.warn(`[esTransicionValida] Estado actual inválido: ${estadoActual}`)
     return false
   }
-  return TRANSICIONES_VALIDAS[estadoActual].includes(estadoNuevo)
-}
 
-export function obtenerEstadosPermitidos(estadoActual) {
-  return TRANSICIONES_VALIDAS[estadoActual] || []
+  const permitidas = transicionesPermitidas[estadoActual]
+  return permitidas.includes(estadoNuevo)
 }
 
 /**
- * ===== CÁLCULO DE TOTALES =====
- * Calcula subtotal y total de una orden
+ * Calcula totales de una orden a partir de su array de productos
+ * Cada producto debe tener: cantidad, precioUnitario
  */
-
-export function calcularTotalesOrden(productos) {
+export function calcularTotalesOrden(productos = []) {
   if (!Array.isArray(productos) || productos.length === 0) {
-    return { subtotal: 0, total: 0 }
+    return {
+      totalMonto: 0,
+      productosCalculados: [],
+    }
   }
 
-  const subtotal = productos.reduce((sum, prod) => {
-    const total = (prod.cantidad || 0) * (prod.precioUnitario || 0)
-    return sum + total
-  }, 0)
+  let totalMonto = 0
+  const productosCalculados = productos.map((prod) => {
+    const cantidad = Number(prod.cantidad) || 1
+    const precioUnitario = Number(prod.precioUnitario) || 0
+    const precioTotal = cantidad * precioUnitario
+
+    totalMonto += precioTotal
+
+    return {
+      ...prod,
+      cantidad,
+      precioUnitario,
+      precioTotal,
+    }
+  })
 
   return {
-    subtotal: Math.round(subtotal * 100) / 100,
-    total: Math.round(subtotal * 100) / 100, // En Fase 1, no hay impuestos
+    totalMonto,
+    productosCalculados,
   }
 }
 
 /**
- * ===== MAPEO DE COLORES DE BADGEST POR TIPO DE TICKET =====
+ * Mapeos auxiliares para UI (colores, estilos)
  */
-
-export const TICKET_TIPO_STYLE = {
-  creacion: { badge: 'bg-blue-500/10 text-blue-400', icono: '📝' },
-  pago_recibido: { badge: 'bg-green-500/10 text-green-400', icono: '✓' },
-  procesamiento_inicio: { badge: 'bg-purple-500/10 text-purple-400', icono: '⚙️' },
-  envio: { badge: 'bg-orange-500/10 text-orange-400', icono: '📦' },
-  entrega: { badge: 'bg-green-500/10 text-green-500', icono: '🎉' },
-  problema: { badge: 'bg-red-500/10 text-red-400', icono: '⚠️' },
-  cancelacion: { badge: 'bg-red-500/10 text-red-500', icono: '❌' },
-  actualización: { badge: 'bg-gray-500/10 text-gray-400', icono: '🔄' },
+export const estadoOrdenStyleMap = {
+  pendiente: { color: '#FFC107', label: 'Pendiente' },
+  procesando: { color: '#2196F3', label: 'Procesando' },
+  completada: { color: '#4CAF50', label: 'Completada' },
+  entregada: { color: '#558B2F', label: 'Entregada' },
+  cancelada: { color: '#F44336', label: 'Cancelada' },
 }
 
-/**
- * ===== MAPEO DE COLORES POR ESTADO DE ORDEN =====
- */
-
-export const ESTADO_ORDEN_STYLE = {
-  pendiente: 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20',
-  procesando: 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
-  completada: 'bg-purple-500/10 text-purple-400 border border-purple-500/20',
-  entregada: 'bg-green-500/10 text-green-400 border border-green-500/20',
-  cancelada: 'bg-red-500/10 text-red-500 border border-red-500/20',
-}
-
-/**
- * ===== ETIQUETAS LEGIBLES PARA ESTADOS =====
- */
-
-export const ESTADO_ETIQUETA = {
-  pendiente: 'Pendiente',
-  procesando: 'Procesando',
-  completada: 'Completada',
-  entregada: 'Entregada',
-  cancelada: 'Cancelada',
+export const tipoTicketIconMap = {
+  creacion: '📋',
+  pago_recibido: '✅',
+  procesamiento_inicio: '⏱️',
+  envio: '📦',
+  entrega: '🎁',
+  problema: '⚠️',
+  cancelacion: '❌',
+  actualización: '🔄',
 }
