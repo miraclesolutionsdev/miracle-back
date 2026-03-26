@@ -18,8 +18,21 @@ const client = new MercadoPagoConfig({
  * Requiere la variable de entorno MP_WEBHOOK_SECRET configurada en el dashboard de MP.
  * Si no está configurada, se registra una advertencia y se permite el paso (útil en desarrollo).
  */
+function hmacSha256(key, message) {
+  return crypto.createHmac('sha256', key).update(message).digest('hex')
+}
+
+function safeCompare(a, b) {
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'))
+  } catch {
+    return false
+  }
+}
+
 function validateWebhookSignature(req) {
-  const secret = process.env.MP_WEBHOOK_SECRET
+  // Trim para eliminar cualquier whitespace/newline que pueda venir del copy-paste en Vercel
+  const secret = (process.env.MP_WEBHOOK_SECRET || '').trim()
   if (!secret) {
     console.warn('[MP] MP_WEBHOOK_SECRET no configurado. Validación de firma omitida.')
     return true
@@ -57,18 +70,28 @@ function validateWebhookSignature(req) {
   }
 
   const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts}`
-  const computed = crypto.createHmac('sha256', secret).update(manifest).digest('hex')
 
+  // Enfoque 1: clave como string UTF-8 (lo que usábamos antes)
+  const computedRaw = hmacSha256(secret, manifest)
+
+  // Enfoque 2: clave decodificada como buffer hexadecimal (32 bytes binarios)
+  // MercadoPago puede generar el secreto como bytes aleatorios representados en hex
+  const isHex = secret.length === 64 && /^[0-9a-f]+$/i.test(secret)
+  const computedHexKey = isHex ? hmacSha256(Buffer.from(secret, 'hex'), manifest) : null
+
+  console.log('[MP] HMAC - secret.length:', secret.length)
   console.log('[MP] HMAC - manifest:', manifest)
-  console.log('[MP] HMAC - computed:', computed)
-  console.log('[MP] HMAC - received:', v1)
+  console.log('[MP] HMAC - computed (string key):', computedRaw)
+  if (computedHexKey) console.log('[MP] HMAC - computed (hex-decoded key):', computedHexKey)
+  console.log('[MP] HMAC - received (v1):', v1)
 
-  try {
-    return crypto.timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(v1, 'hex'))
-  } catch (e) {
-    console.warn('[MP] timingSafeEqual falló:', e.message)
-    return false
-  }
+  const matchRaw = safeCompare(computedRaw, v1)
+  const matchHex = computedHexKey ? safeCompare(computedHexKey, v1) : false
+
+  if (matchRaw) console.log('[MP] HMAC ✓ válido (clave como string)')
+  if (matchHex) console.log('[MP] HMAC ✓ válido (clave hex-decodificada)')
+
+  return matchRaw || matchHex
 }
 
 export async function crearPreferencia(req, res) {
