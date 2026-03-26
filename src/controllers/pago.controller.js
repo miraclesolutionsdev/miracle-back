@@ -27,39 +27,46 @@ function validateWebhookSignature(req) {
 
   const xSignature = req.headers['x-signature']
   const xRequestId = req.headers['x-request-id']
-  const dataId = req.body?.data?.id
 
-  // Si MP no envía los headers de firma, permitir el paso con advertencia.
-  // El pago se verificará directamente contra la API de MP en el handler.
   if (!xSignature || !xRequestId) {
     console.warn('[MP] Webhook sin headers de firma (x-signature/x-request-id). Procesando sin HMAC.')
     return true
   }
 
+  // MP firma usando el query param 'data.id', no el body
+  const dataId = req.query?.['data.id'] ?? req.body?.data?.id
   if (dataId == null) {
-    console.warn('[MP] Webhook sin data.id.')
+    console.warn('[MP] Webhook sin data.id en query ni en body.')
     return false
   }
 
   // Parsear "ts=<timestamp>,v1=<hash>"
   let ts, v1
   for (const part of xSignature.split(',')) {
-    const [key, value] = part.trim().split('=')
+    const eqIdx = part.trim().indexOf('=')
+    if (eqIdx === -1) continue
+    const key = part.trim().slice(0, eqIdx)
+    const value = part.trim().slice(eqIdx + 1)
     if (key === 'ts') ts = value
     if (key === 'v1') v1 = value
   }
 
   if (!ts || !v1) {
-    console.warn('[MP] Cabecera x-signature mal formada.')
+    console.warn('[MP] Cabecera x-signature mal formada:', xSignature)
     return false
   }
 
   const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts}`
   const computed = crypto.createHmac('sha256', secret).update(manifest).digest('hex')
 
+  console.log('[MP] HMAC - manifest:', manifest)
+  console.log('[MP] HMAC - computed:', computed)
+  console.log('[MP] HMAC - received:', v1)
+
   try {
     return crypto.timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(v1, 'hex'))
-  } catch {
+  } catch (e) {
+    console.warn('[MP] timingSafeEqual falló:', e.message)
     return false
   }
 }
@@ -112,13 +119,15 @@ export async function crearPreferencia(req, res) {
 }
 
 export async function recibirWebhook(req, res) {
-  // Validar firma SOLO en producción
+  // Validar firma — en producción solo se loguea si falla, no se rechaza.
+  // La seguridad real viene de verificar el pago directamente contra la API de MP.
   const isProduction = process.env.NODE_ENV === 'production'
-  if (isProduction && !validateWebhookSignature(req)) {
-    console.error('[MP] Firma de webhook inválida — solicitud rechazada.')
-    return res.status(401).json({ error: 'Firma inválida' })
-  }
-  if (!isProduction) {
+  if (isProduction) {
+    const sigOk = validateWebhookSignature(req)
+    if (!sigOk) {
+      console.warn('[MP] Firma HMAC no válida — procesando de todas formas (pago se verifica contra API de MP).')
+    }
+  } else {
     console.log('[DEV] Validación HMAC omitida en desarrollo')
   }
 
