@@ -28,7 +28,7 @@ export async function generarNumeroOrden() {
           },
         },
       ],
-      { upsert: true, new: true }
+      { upsert: true, new: true, updatePipeline: true }
     )
 
     const numeroFormateado = String(contador.contador).padStart(3, '0')
