@@ -29,8 +29,15 @@ function validateWebhookSignature(req) {
   const xRequestId = req.headers['x-request-id']
   const dataId = req.body?.data?.id
 
-  if (!xSignature || !xRequestId || dataId == null) {
-    console.warn('[MP] Webhook sin headers de firma requeridos.')
+  // Si MP no envía los headers de firma, permitir el paso con advertencia.
+  // El pago se verificará directamente contra la API de MP en el handler.
+  if (!xSignature || !xRequestId) {
+    console.warn('[MP] Webhook sin headers de firma (x-signature/x-request-id). Procesando sin HMAC.')
+    return true
+  }
+
+  if (dataId == null) {
+    console.warn('[MP] Webhook sin data.id.')
     return false
   }
 
