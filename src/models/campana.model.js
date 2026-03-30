@@ -7,6 +7,7 @@ const campanaSchema = new mongoose.Schema(
       ref: "Tenant",
       default: null,
     },
+    nombre: { type: String, trim: true, default: "" },
     producto: { type: String, trim: true, default: "" },
     piezaCreativo: { type: String, trim: true, default: "" },
     plataforma: { type: String, trim: true, default: "" },

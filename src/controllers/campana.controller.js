@@ -6,11 +6,13 @@ function toResponse(doc) {
   const o = doc.toObject ? doc.toObject() : doc
   return {
     id: o._id?.toString(),
+    nombre: o.nombre ?? "",
     producto: o.producto ?? "",
     piezaCreativo: o.piezaCreativo ?? "",
     plataforma: o.plataforma ?? "",
     miracleCoins: o.miracleCoins ?? 0,
     estado: o.estado ?? "borrador",
+    createdAt: o.createdAt,
   }
 }
 
@@ -48,8 +50,9 @@ export async function obtenerUno(req, res) {
 
 export async function crear(req, res) {
   try {
-    const { producto, piezaCreativo, plataforma, miracleCoins, estado } = req.body
+    const { nombre, producto, piezaCreativo, plataforma, miracleCoins, estado } = req.body
     const campana = await Campana.create({
+      nombre: (nombre ?? "").trim(),
       producto: (producto ?? "").trim(),
       piezaCreativo: (piezaCreativo ?? "").trim(),
       plataforma: (plataforma ?? "").trim(),
@@ -68,8 +71,9 @@ export async function actualizar(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de campaña no válido" })
     }
-    const { producto, piezaCreativo, plataforma, miracleCoins, estado } = req.body
+    const { nombre, producto, piezaCreativo, plataforma, miracleCoins, estado } = req.body
     const update = {}
+    if (nombre !== undefined) update.nombre = (nombre ?? "").trim()
     if (producto !== undefined) update.producto = (producto ?? "").trim()
     if (piezaCreativo !== undefined) update.piezaCreativo = (piezaCreativo ?? "").trim()
     if (plataforma !== undefined) update.plataforma = (plataforma ?? "").trim()

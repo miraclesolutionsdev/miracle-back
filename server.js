@@ -26,7 +26,7 @@ import ordenRoutes from "./src/routes/orden.routes.js"
 
 const app = express()
 
-// CORS - permitir frontend en Vercel y desarrollo local
+// CORS - debe ir ANTES de helmet para que las cabeceras no sean sobrescritas
 const corsOptions = {
   origin: [
     "https://miracle-front-jade.vercel.app",
@@ -38,8 +38,10 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200
 }
-app.use(helmet())
+// Preflight explícito para todas las rutas (necesario en Vercel serverless)
+app.options("*", cors(corsOptions))
 app.use(cors(corsOptions))
+app.use(helmet({ crossOriginResourcePolicy: false }))
 app.use(cookieParser())
 app.use(express.json({ limit: "10mb" }))
 
