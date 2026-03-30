@@ -53,7 +53,7 @@ const globalLimiter = rateLimit({
   message: { error: "Demasiadas solicitudes. Intenta de nuevo en 15 minutos." },
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { xForwardedForHeader: false },
+  validate: { xForwardedForHeader: false, forwardedHeader: false },
 })
 app.use(globalLimiter)
 
