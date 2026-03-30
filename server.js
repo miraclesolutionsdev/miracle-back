@@ -39,7 +39,7 @@ const corsOptions = {
   optionsSuccessStatus: 200
 }
 // Preflight explícito para todas las rutas (necesario en Vercel serverless)
-app.options("*", cors(corsOptions))
+app.options("/{*splat}", cors(corsOptions))
 app.use(cors(corsOptions))
 app.use(helmet({ crossOriginResourcePolicy: false }))
 app.use(cookieParser())
