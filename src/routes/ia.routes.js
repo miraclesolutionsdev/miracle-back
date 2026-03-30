@@ -1,233 +1,29 @@
 import { Router } from "express"
 import { requireAuth } from "../middleware/auth.middleware.js"
-import IaResumen from "../models/iaResumen.model.js"
 import {
-  generarAngulosParaProducto,
-  generarCopysParaProducto,
-  generarGuionDesdeImagen,
-  generarCopyDesdeImagen,
-} from "../services/iaCopy.service.js"
-import { generarImagenDesdePrompt } from "../services/iaImagen.service.js"
-import {
-  iniciarVideoRunway,
-  obtenerEstadoVideoRunway,
-  generarVozRunway,
-  obtenerEstadoVozRunway,
-} from "../services/iaVideo.service.js"
+  generarAngulos,
+  generarCopys,
+  generarGuionImagen,
+  generarImagen,
+  generarCopyImagen,
+  iniciarVideo,
+  obtenerEstadoVideo,
+  iniciarVoz,
+  obtenerEstadoVoz,
+} from "../controllers/ia.controller.js"
 
 const router = Router()
+router.use(requireAuth)
 
-// Obtener resumen IA guardado
-router.get("/resumen", requireAuth, async (req, res) => {
-  try {
-    const doc = await IaResumen.findOne().lean()
-    if (!doc) return res.status(404).json({ error: "No hay resumen guardado." })
-    res.json({
-      producto: doc.producto ?? null,
-      angulo: doc.angulo ?? null,
-      copys: Array.isArray(doc.copys) ? doc.copys : [],
-      imagenPorCopy: doc.imagenPorCopy && typeof doc.imagenPorCopy === "object" ? doc.imagenPorCopy : {},
-      mensajes: Array.isArray(doc.mensajes) ? doc.mensajes : [],
-    })
-  } catch (error) {
-    console.error("[ia] Error al obtener resumen:", error)
-    res.status(500).json({ error: "No se pudo cargar el resumen." })
-  }
-})
+router.post("/angulos", generarAngulos)
+router.post("/copys", generarCopys)
+router.post("/guion-imagen", generarGuionImagen)
+router.post("/generar-imagen", generarImagen)
+router.post("/copy-desde-imagen", generarCopyImagen)
 
-// Guardar o actualizar resumen
-router.put("/resumen", requireAuth, async (req, res) => {
-  try {
-    const { producto, angulo, copys, imagenPorCopy, mensajes } = req.body || {}
-    const update = {
-      producto: producto ?? null,
-      angulo: angulo ?? null,
-      copys: Array.isArray(copys) ? copys : [],
-      imagenPorCopy: imagenPorCopy && typeof imagenPorCopy === "object" ? imagenPorCopy : {},
-    }
-    if (mensajes !== undefined) {
-      update.mensajes = Array.isArray(mensajes) ? mensajes : []
-    }
-    const doc = await IaResumen.findOneAndUpdate(
-      {},
-      { $set: update },
-      { new: true, upsert: true, runValidators: true }
-    )
-    res.json({
-      producto: doc.producto ?? null,
-      angulo: doc.angulo ?? null,
-      copys: Array.isArray(doc.copys) ? doc.copys : [],
-      imagenPorCopy: doc.imagenPorCopy && typeof doc.imagenPorCopy === "object" ? doc.imagenPorCopy : {},
-      mensajes: Array.isArray(doc.mensajes) ? doc.mensajes : [],
-    })
-  } catch (error) {
-    console.error("[ia] Error al guardar resumen:", error)
-    res.status(500).json({ error: "No se pudo guardar el resumen." })
-  }
-})
-
-// Limpiar resumen guardado
-router.delete("/resumen", requireAuth, async (req, res) => {
-  try {
-    await IaResumen.deleteMany({})
-    res.json({ ok: true, message: "Resumen eliminado." })
-  } catch (error) {
-    console.error("[ia] Error al eliminar resumen:", error)
-    res.status(500).json({ error: "No se pudo eliminar el resumen." })
-  }
-})
-
-// Generar ángulos de venta para un producto
-router.post("/angulos", requireAuth, async (req, res) => {
-  try {
-    const { producto, historial = [] } = req.body
-    if (!producto?.nombre) {
-      return res.status(400).json({ error: "Faltan datos del producto. Se requiere al menos 'nombre'." })
-    }
-    const resultado = await generarAngulosParaProducto(producto, historial)
-    res.json(resultado)
-  } catch (error) {
-    console.error("[ia] Error al generar ángulos:", error)
-    res.status(500).json({ error: "No se pudieron generar los ángulos con la IA." })
-  }
-})
-
-// Generar copys (TOF/MOF/BOF) para un ángulo de un producto
-router.post("/copys", requireAuth, async (req, res) => {
-  try {
-    const { producto, angulo, historial = [] } = req.body
-    if (!producto?.nombre) {
-      return res.status(400).json({ error: "Faltan datos del producto. Se requiere al menos 'nombre'." })
-    }
-    if (!angulo?.nombre) {
-      return res.status(400).json({ error: "Faltan datos del ángulo. Se requiere al menos 'nombre'." })
-    }
-    const resultado = await generarCopysParaProducto(producto, angulo, historial)
-    res.json(resultado)
-  } catch (error) {
-    console.error("[ia] Error al generar copys:", error)
-    res.status(500).json({ error: "No se pudieron generar los copys con la IA." })
-  }
-})
-
-// Generar guion audiovisual a partir de imagen + copy base
-router.post("/guion-imagen", requireAuth, async (req, res) => {
-  try {
-    const { payload, historial = [] } = req.body
-    if (!payload?.producto || !payload?.copy_base || !payload?.imagen) {
-      return res.status(400).json({
-        error: "Faltan datos para generar el guion. Se requiere 'producto', 'copy_base' e 'imagen'.",
-      })
-    }
-    const resultado = await generarGuionDesdeImagen(payload, historial)
-    res.json(resultado)
-  } catch (error) {
-    console.error("[ia] Error al generar guion desde imagen:", error)
-    res.status(500).json({ error: "No se pudo generar el guion desde la imagen con la IA." })
-  }
-})
-
-// Generar imagen a partir de un prompt (Google Gemini)
-router.post("/generar-imagen", requireAuth, async (req, res) => {
-  try {
-    const { prompt, aspectRatio = "1:1", imagenesProducto = [] } = req.body || {}
-    if (!prompt?.trim()) {
-      return res.status(400).json({ error: "Falta 'prompt' para generar la imagen." })
-    }
-    const resultado = await generarImagenDesdePrompt(prompt.trim(), aspectRatio, imagenesProducto)
-    res.json(resultado)
-  } catch (error) {
-    console.error("[ia] Error al generar imagen:", error)
-    res.status(500).json({ error: error.message || "No se pudo generar la imagen con la IA." })
-  }
-})
-
-// Generar copy desde una imagen (visión)
-router.post("/copy-desde-imagen", requireAuth, async (req, res) => {
-  try {
-    const {
-      imagenDataUrl,
-      imagenesProducto = [],
-      contextoProducto = {},
-      historial = [],
-      copyBase = null,
-    } = req.body || {}
-
-    if (!imagenDataUrl && (!imagenesProducto || imagenesProducto.length === 0)) {
-      return res.status(400).json({
-        error: "Falta 'imagenDataUrl' o 'imagenesProducto' en el cuerpo de la petición.",
-      })
-    }
-
-    const resultado = await generarCopyDesdeImagen(
-      imagenDataUrl,
-      contextoProducto,
-      historial,
-      imagenesProducto,
-      copyBase
-    )
-    res.json(resultado)
-  } catch (error) {
-    console.error("[ia] Error al generar copy desde imagen:", error)
-    res.status(500).json({ error: "No se pudo generar el copy desde la imagen con la IA." })
-  }
-})
-
-// Iniciar generación de video con RunwayML (image-to-video)
-router.post("/generar-video-runway", requireAuth, async (req, res) => {
-  try {
-    const { copyTexto, imageUrl, ratio, duration } = req.body || {}
-    if (!copyTexto?.trim()) {
-      return res.status(400).json({ error: "Falta 'copyTexto' para generar el video con Runway." })
-    }
-    if (!imageUrl?.trim()) {
-      return res.status(400).json({ error: "Falta 'imageUrl' para generar el video con Runway." })
-    }
-    const resultado = await iniciarVideoRunway({ copyTexto, imageUrl, ratio, duration })
-    res.json(resultado)
-  } catch (error) {
-    console.error("[ia] Error al generar video con Runway:", error)
-    res.status(500).json({ error: error.message || "No se pudo iniciar la generación del video." })
-  }
-})
-
-// Consultar estado de un task de RunwayML (video)
-router.get("/video-runway-estado/:id", requireAuth, async (req, res) => {
-  try {
-    const { id } = req.params
-    if (!id) return res.status(400).json({ error: "Falta 'id' del task de Runway." })
-    const resultado = await obtenerEstadoVideoRunway(id)
-    res.json(resultado)
-  } catch (error) {
-    console.error("[ia] Error al consultar estado de video Runway:", error)
-    res.status(500).json({ error: error.message || "No se pudo consultar el estado del video." })
-  }
-})
-
-// Generar voz (TTS) con RunwayML
-router.post("/generar-voz-runway", requireAuth, async (req, res) => {
-  try {
-    const { texto, voiceId } = req.body || {}
-    if (!texto?.trim()) return res.status(400).json({ error: "Falta 'texto' para generar la voz." })
-    const resultado = await generarVozRunway({ texto, voiceId })
-    res.json(resultado)
-  } catch (error) {
-    console.error("[ia] Error al generar voz con Runway:", error)
-    res.status(500).json({ error: error.message || "No se pudo generar la voz." })
-  }
-})
-
-// Consultar estado de voz generada
-router.get("/voz-runway-estado/:id", requireAuth, async (req, res) => {
-  try {
-    const { id } = req.params
-    if (!id) return res.status(400).json({ error: "Falta 'id' del task." })
-    const resultado = await obtenerEstadoVozRunway(id)
-    res.json(resultado)
-  } catch (error) {
-    console.error("[ia] Error al consultar estado de voz Runway:", error)
-    res.status(500).json({ error: error.message || "No se pudo consultar el estado de la voz." })
-  }
-})
+router.post("/generar-video-runway", iniciarVideo)
+router.get("/video-runway-estado/:id", obtenerEstadoVideo)
+router.post("/generar-voz-runway", iniciarVoz)
+router.get("/voz-runway-estado/:id", obtenerEstadoVoz)
 
 export default router

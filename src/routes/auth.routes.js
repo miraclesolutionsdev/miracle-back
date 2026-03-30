@@ -1,21 +1,26 @@
 import { Router } from "express"
+import rateLimit from "express-rate-limit"
 import { requireAuth } from "../middleware/auth.middleware.js"
 import {
   login,
-  crearTienda,
+  logout,
   obtenerPerfil,
   actualizarPerfil,
   cambiarPassword,
-  actualizarTenant,
-  obtenerPresignedLogoTenant,
 } from "../controllers/auth.controller.js"
 
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 5,
+  message: { error: "Demasiados intentos de inicio de sesión. Intenta de nuevo en 15 minutos." },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
 const router = Router()
-router.post("/login", login)
-router.post("/crear-tienda", crearTienda)
+router.post("/login", loginLimiter, login)
+router.post("/logout", logout)
 router.get("/me", requireAuth, obtenerPerfil)
 router.patch("/me", requireAuth, actualizarPerfil)
 router.post("/cambiar-password", requireAuth, cambiarPassword)
-router.patch("/tenant", requireAuth, actualizarTenant)
-router.post("/tenant/logo/presigned", requireAuth, obtenerPresignedLogoTenant)
 export default router

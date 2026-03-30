@@ -18,8 +18,13 @@ export async function listarOrdenes(req, res) {
 
     const filtro = {}
     if (estado) filtro.estado = estado
-    if (email) filtro['cliente.email'] = { $regex: email, $options: 'i' }
-    if (ordenNumero) filtro.ordenNumero = { $regex: ordenNumero, $options: 'i' }
+    // Email: coincidencia exacta (evita inyección via $regex)
+    if (email) filtro['cliente.email'] = String(email).trim().toLowerCase()
+    // OrdenNumero: escapar caracteres especiales de regex
+    if (ordenNumero) {
+      const escaped = String(ordenNumero).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      filtro.ordenNumero = { $regex: escaped, $options: 'i' }
+    }
 
     // Filtro de fechas
     if (desde || hasta) {
@@ -177,6 +182,25 @@ export async function crearOrden(req, res) {
       notas: notas || '',
     })
 
+    // Decrementar stock atómicamente (previene race conditions)
+    const resultados = []
+    for (const prod of productos) {
+      const updated = await Producto.findOneAndUpdate(
+        { _id: prod.productoId, stock: { $gte: prod.cantidad } },
+        { $inc: { stock: -prod.cantidad } }
+      )
+      resultados.push({ prod, ok: !!updated })
+    }
+
+    if (resultados.some((r) => !r.ok)) {
+      // Rollback: restaurar stock de los que sí se decrementaron
+      for (const { prod, ok } of resultados) {
+        if (ok) await Producto.findByIdAndUpdate(prod.productoId, { $inc: { stock: prod.cantidad } })
+      }
+      await Orden.findByIdAndDelete(nuevaOrden._id)
+      return res.status(409).json({ error: 'Stock insuficiente. Intenta de nuevo.' })
+    }
+
     // Crear ticket inicial
     const ticket = await Ticket.create({
       numeroTicket: `TK-${ordenNumero}`,
@@ -185,13 +209,6 @@ export async function crearOrden(req, res) {
       descripcion: `Orden creada manualmente con ${productos.length} producto(s)`,
       creador: 'manual',
     })
-
-    // Decrementar stock
-    for (const prod of productos) {
-      await Producto.findByIdAndUpdate(prod.productoId, {
-        $inc: { stock: -prod.cantidad },
-      })
-    }
 
     res.status(201).json({
       orden: nuevaOrden.toObject(),

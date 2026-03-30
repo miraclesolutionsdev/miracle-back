@@ -16,12 +16,16 @@ function toResponse(doc) {
 
 export async function listar(req, res) {
   try {
-    const { estado } = req.query
+    const { estado, limit = 500, skip = 0 } = req.query
     const filter = {}
     if (estado && ["borrador", "activa", "pausada", "finalizada"].includes(estado)) {
       filter.estado = estado
     }
-    const campanas = await Campana.find(filter).sort({ createdAt: -1 }).lean()
+    const campanas = await Campana.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Number(limit), 1000))
+      .skip(Number(skip))
+      .lean()
     res.json(campanas.map(toResponse))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -76,6 +80,20 @@ export async function actualizar(req, res) {
     const campana = await Campana.findByIdAndUpdate(id, update, { new: true }).lean()
     if (!campana) return res.status(404).json({ error: "Campaña no encontrada" })
     res.json(toResponse(campana))
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+}
+
+export async function eliminar(req, res) {
+  try {
+    const { id } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "ID de campaña no válido" })
+    }
+    const campana = await Campana.findByIdAndDelete(id)
+    if (!campana) return res.status(404).json({ error: "Campaña no encontrada" })
+    res.status(204).end()
   } catch (error) {
     res.status(500).json({ error: error.message })
   }

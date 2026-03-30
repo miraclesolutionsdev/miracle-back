@@ -1,7 +1,6 @@
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago'
 import crypto from 'crypto'
 import Producto from '../models/producto.model.js'
-import Venta from '../models/venta.model.js'
 import Orden from '../models/orden.model.js'
 import Ticket from '../models/ticket.model.js'
 import Cliente from '../models/cliente.model.js'
@@ -34,16 +33,16 @@ function validateWebhookSignature(req) {
   // Trim para eliminar cualquier whitespace/newline que pueda venir del copy-paste en Vercel
   const secret = (process.env.MP_WEBHOOK_SECRET || '').trim()
   if (!secret) {
-    console.warn('[MP] MP_WEBHOOK_SECRET no configurado. Validación de firma omitida.')
-    return true
+    console.error('[MP] MP_WEBHOOK_SECRET no configurado. Rechazando webhook.')
+    return false
   }
 
   const xSignature = req.headers['x-signature']
   const xRequestId = req.headers['x-request-id']
 
   if (!xSignature || !xRequestId) {
-    console.warn('[MP] Webhook sin headers de firma (x-signature/x-request-id). Procesando sin HMAC.')
-    return true
+    console.warn('[MP] Webhook sin headers de firma (x-signature/x-request-id). Rechazando.')
+    return false
   }
 
   // MP firma usando el query param 'data.id', no el body
@@ -70,36 +69,34 @@ function validateWebhookSignature(req) {
   }
 
   const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts}`
-
-  // Enfoque 1: clave como string UTF-8 (lo que usábamos antes)
   const computedRaw = hmacSha256(secret, manifest)
 
-  // Enfoque 2: clave decodificada como buffer hexadecimal (32 bytes binarios)
-  // MercadoPago puede generar el secreto como bytes aleatorios representados en hex
+  // Soporte para secret en formato hex (32 bytes) o string UTF-8
   const isHex = secret.length === 64 && /^[0-9a-f]+$/i.test(secret)
   const computedHexKey = isHex ? hmacSha256(Buffer.from(secret, 'hex'), manifest) : null
 
-  console.log('[MP] HMAC - secret.length:', secret.length)
-  console.log('[MP] HMAC - manifest:', manifest)
-  console.log('[MP] HMAC - computed (string key):', computedRaw)
-  if (computedHexKey) console.log('[MP] HMAC - computed (hex-decoded key):', computedHexKey)
-  console.log('[MP] HMAC - received (v1):', v1)
-
-  const matchRaw = safeCompare(computedRaw, v1)
-  const matchHex = computedHexKey ? safeCompare(computedHexKey, v1) : false
-
-  if (matchRaw) console.log('[MP] HMAC ✓ válido (clave como string)')
-  if (matchHex) console.log('[MP] HMAC ✓ válido (clave hex-decodificada)')
-
-  return matchRaw || matchHex
+  return safeCompare(computedRaw, v1) || (computedHexKey ? safeCompare(computedHexKey, v1) : false)
 }
 
 export async function crearPreferencia(req, res) {
   try {
-    const { productoId } = req.body
+    const {
+      productoId,
+      cantidad: cantidadRaw = 1,
+      clienteNombre,
+      clienteCelular,
+      clienteEmail,
+      clienteCedula,
+      envioDireccion,
+      envioBarrio,
+      envioUnidad,
+      envioTorre,
+      envioApto,
+    } = req.body
     if (!productoId) {
       return res.status(400).json({ error: 'productoId es requerido' })
     }
+    const cantidad = Math.max(1, Math.min(99, parseInt(cantidadRaw) || 1))
 
     const producto = await Producto.findById(productoId)
     if (!producto) {
@@ -108,8 +105,11 @@ export async function crearPreferencia(req, res) {
     if (producto.estado !== 'activo') {
       return res.status(400).json({ error: 'Producto no disponible' })
     }
+    if (producto.tipo === 'producto' && producto.stock < cantidad) {
+      return res.status(400).json({ error: `Solo hay ${producto.stock} unidades disponibles` })
+    }
 
-    const FRONT_URL = process.env.FRONT_URL || 'https://www.miraclesolutions.com.co'
+    const FRONT_URL = process.env.FRONT_URL
     const preference = new Preference(client)
     const result = await preference.create({
       body: {
@@ -118,19 +118,31 @@ export async function crearPreferencia(req, res) {
             id: producto._id.toString(),
             title: producto.nombre,
             description: producto.descripcion || producto.nombre,
-            quantity: 1,
+            quantity: cantidad,
             unit_price: Number(producto.precio),
             currency_id: 'COP',
           },
         ],
         back_urls: {
-          success: `${FRONT_URL}/pago/exitoso`,
+          success: `${FRONT_URL}/pago/exitoso${producto.whatsapp ? `?wa=${encodeURIComponent(producto.whatsapp)}` : ''}`,
           failure: `${FRONT_URL}/pago/fallido`,
           pending: `${FRONT_URL}/pago/pendiente`,
         },
         ...(FRONT_URL.startsWith('https') && { auto_return: 'approved' }),
         statement_descriptor: 'Miracle Solutions',
-        metadata: { productoId: producto._id.toString() },
+        metadata: {
+          productoId:     producto._id.toString(),
+          cantidad,
+          clienteNombre:  clienteNombre  || '',
+          clienteCelular: clienteCelular || '',
+          clienteEmail:   clienteEmail   || '',
+          clienteCedula:  clienteCedula  || '',
+          envioDireccion: envioDireccion || '',
+          envioBarrio:    envioBarrio    || '',
+          envioUnidad:    envioUnidad    || '',
+          envioTorre:     envioTorre     || '',
+          envioApto:      envioApto      || '',
+        },
       },
     })
 
@@ -146,9 +158,15 @@ export async function recibirWebhook(req, res) {
   // La seguridad real viene de verificar el pago directamente contra la API de MP.
   const isProduction = process.env.NODE_ENV === 'production'
   if (isProduction) {
-    const sigOk = validateWebhookSignature(req)
-    if (!sigOk) {
-      console.warn('[MP] Firma HMAC no válida — procesando de todas formas (pago se verifica contra API de MP).')
+    if (process.env.MP_WEBHOOK_SECRET) {
+      // Secret configurado: validar firma estrictamente
+      if (!validateWebhookSignature(req)) {
+        console.warn('[MP] Firma HMAC inválida. Rechazando webhook.')
+        return res.status(401).json({ error: 'Firma de webhook inválida' })
+      }
+    } else {
+      // Sin secret: advertir pero procesar — la verificación contra la API de MP es el candado real
+      console.warn('[MP] ⚠️  MP_WEBHOOK_SECRET no configurado. Configúralo en producción para máxima seguridad.')
     }
   } else {
     console.log('[DEV] Validación HMAC omitida en desarrollo')
@@ -173,8 +191,9 @@ export async function recibirWebhook(req, res) {
       return res.sendStatus(200)
     }
 
-    // Extrae productId de metadata
+    // Extrae productId y cantidad de metadata
     const productoId = pago.metadata?.producto_id || pago.metadata?.productoId
+    const cantidad = Math.max(1, Number(pago.metadata?.cantidad) || 1)
     if (!productoId) {
       console.error('[MP] No se encontró productoId en metadata del pago:', paymentId)
       return res.sendStatus(200)
@@ -190,21 +209,44 @@ export async function recibirWebhook(req, res) {
     // ===== CREAR ORDEN AUTOMÁTICAMENTE =====
     console.log(`[MP] Creando orden para producto: ${producto.nombre}`)
 
-    // Extrae datos del comprador del pago
-    const emailComprador = pago.payer?.email || 'desconocido@nointent.com'
-    const nombreComprador = pago.payer?.first_name || pago.additional_info?.items?.[0]?.title || 'Comprador'
+    // Extrae datos del payer (fallback si el formulario no los envió)
+    const payerFirst = (pago.payer?.first_name || pago.additional_info?.payer?.first_name || '').trim()
+    const payerLast  = (pago.payer?.last_name  || pago.additional_info?.payer?.last_name  || '').trim()
+    const payerEmail = (pago.payer?.email || '').trim()
+    const payerPhone = pago.payer?.phone?.number ? String(pago.payer.phone.number) : ''
 
-    // Buscar o crear cliente
-    let cliente = await Cliente.findOne({ email: emailComprador })
-    if (!cliente) {
-      console.log(`[MP] Cliente no existe, creando: ${emailComprador}`)
-      cliente = await Cliente.create({
-        nombreEmpresa: nombreComprador,
-        email: emailComprador,
-        whatsapp: pago.payer?.phone?.number || '',
-        estado: 'activo',
-      })
-    }
+    // Leer metadata del formulario (MP convierte camelCase → snake_case)
+    const m = pago.metadata || {}
+    const clienteNombre  = (m.cliente_nombre  || m.clienteNombre  || [payerFirst, payerLast].filter(Boolean).join(' ') || payerEmail.split('@')[0]).trim()
+    const clienteCelular = (m.cliente_celular || m.clienteCelular || payerPhone).trim()
+    const emailComprador = (m.cliente_email   || m.clienteEmail   || payerEmail || 'desconocido@nointent.com').trim()
+    const clienteCedula  = (m.cliente_cedula  || m.clienteCedula  || '').trim()
+    const envioDireccion = (m.envio_direccion || m.envioDireccion || '').trim()
+    const envioBarrio    = (m.envio_barrio    || m.envioBarrio    || '').trim()
+    const envioUnidad    = (m.envio_unidad    || m.envioUnidad    || '').trim()
+    const envioTorre     = (m.envio_torre     || m.envioTorre     || '').trim()
+    const envioApto      = (m.envio_apto      || m.envioApto      || '').trim()
+
+    console.log(`[MP] Cliente metadata: nombre="${clienteNombre}" email="${emailComprador}" celular="${clienteCelular}"`)
+    console.log(`[MP] Envío metadata: dir="${envioDireccion}" barrio="${envioBarrio}" unidad="${envioUnidad}" torre="${envioTorre}" apto="${envioApto}"`)
+
+    // Upsert de cliente con todos los datos del formulario
+    let cliente = await Cliente.findOneAndUpdate(
+      { email: emailComprador },
+      {
+        $set: {
+          nombreEmpresa: clienteNombre,
+          whatsapp: clienteCelular,
+          ...(clienteCedula  && { cedulaNit:    clienteCedula }),
+          ...(envioDireccion && { direccion:    envioDireccion }),
+          ...(envioBarrio    && { ciudadBarrio: envioBarrio }),
+          estado: 'activo',
+        },
+        $setOnInsert: { email: emailComprador },
+      },
+      { upsert: true, new: true }
+    )
+    console.log(`[MP] Cliente upsert: ${clienteNombre} <${emailComprador}>`)
 
     // Generar número de orden
     const ordenNumero = await generarNumeroOrden()
@@ -214,16 +256,24 @@ export async function recibirWebhook(req, res) {
       ordenNumero,
       clienteId: cliente._id,
       cliente: {
-        nombre: cliente.nombreEmpresa,
-        email: cliente.email,
-        whatsapp: cliente.whatsapp || '',
+        nombre:   clienteNombre,
+        email:    emailComprador,
+        whatsapp: clienteCelular,
+        cedula:   clienteCedula,
+      },
+      envio: {
+        direccion:         envioDireccion,
+        barrio:            envioBarrio,
+        unidadResidencial: envioUnidad,
+        torre:             envioTorre,
+        apto:              envioApto,
       },
       productos: [
         {
           productoId: producto._id,
           productoNombre: producto.nombre,
-          cantidad: 1,
-          precioUnitario: Number(pago.transaction_amount ?? 0),
+          cantidad,
+          precioUnitario: Number(pago.transaction_amount ?? 0) / cantidad,
           precioTotal: Number(pago.transaction_amount ?? 0),
         },
       ],
@@ -240,34 +290,26 @@ export async function recibirWebhook(req, res) {
       numeroTicket: `TK-${ordenNumero}`,
       ordenId: nuevaOrden._id,
       tipo: 'pago_recibido',
-      descripcion: `Pago aprobado en MercadoPago (ID: ${paymentId}). Monto: $${pago.transaction_amount}`,
+      descripcion: [
+        `Pago aprobado vía MercadoPago.`,
+        `Cliente: ${clienteNombre} (${emailComprador})`,
+        `Producto: ${producto.nombre}${cantidad > 1 ? ` x${cantidad}` : ''}`,
+        `Monto: $${Number(pago.transaction_amount).toLocaleString('es-CO')}`,
+        `ID de pago MP: ${paymentId}`,
+      ].join(' | '),
       creador: 'sistema-mercadopago',
     })
 
     console.log(`[MP] ✓ Ticket creado: ${ticket.numeroTicket}`)
 
-    // Decrementar stock
-    if (producto.stock > 0) {
-      await Producto.findByIdAndUpdate(productoId, { $inc: { stock: -1 } })
-      console.log(`[MP] ✓ Stock decrementado: ${producto.nombre}`)
+    // Decrementar stock de forma atómica — evita race condition con compras simultáneas
+    if (producto.tipo === 'producto') {
+      await Producto.findOneAndUpdate(
+        { _id: productoId, tipo: 'producto', stock: { $gte: cantidad } },
+        { $inc: { stock: -cantidad } }
+      )
+      console.log(`[MP] ✓ Stock decrementado: ${producto.nombre} (-${cantidad})`)
     }
-
-    // Crear registro de Venta para compatibilidad con sistema anterior
-    await Venta.updateOne(
-      { pagoId: String(paymentId) },
-      {
-        $setOnInsert: {
-          pagoId: String(paymentId),
-          ordenId: nuevaOrden._id,
-          productoId: producto._id,
-          productoNombre: producto.nombre,
-          monto: pago.transaction_amount ?? 0,
-          estado: 'aprobado',
-          metodoPago: pago.payment_method_id ?? 'mercadopago',
-        },
-      },
-      { upsert: true }
-    )
 
     console.log(`[MP] ✓ Orden procesada completamente: ${ordenNumero}`)
   } catch (err) {
@@ -276,22 +318,4 @@ export async function recibirWebhook(req, res) {
 
   // Siempre retornar 200 a MercadoPago
   res.sendStatus(200)
-}
-
-// Endpoint para DESARROLLO LOCAL ÚNICAMENTE
-export async function webhookTest(req, res) {
-  // Bloqueado en producción
-  if (process.env.NODE_ENV === 'production') return res.status(403).send('No disponible')
-
-  // Simula un webhook completo de MP
-  const mockWebhookBody = {
-    type: 'payment',
-    data: {
-      id: Math.floor(Math.random() * 1000000000)
-    }
-  }
-
-  // Procesa como si fuera un webhook real
-  req.body = mockWebhookBody
-  return recibirWebhook(req, res)
 }

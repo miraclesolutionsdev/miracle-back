@@ -43,7 +43,8 @@ export async function listar(req, res) {
       })
     )
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    console.error('[Users]', error.message)
+    res.status(500).json({ error: 'Error interno del servidor' })
   }
 }
 
@@ -68,7 +69,8 @@ export async function crear(req, res) {
     })
     res.status(201).json(toSafeUser(user))
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    console.error('[Users]', error.message)
+    res.status(500).json({ error: 'Error interno del servidor' })
   }
 }
 
@@ -111,8 +113,8 @@ export async function actualizar(req, res) {
     if (nombre !== undefined) update.nombre = (nombre ?? "").trim()
 
     if (contraseñaActual !== undefined && nuevaContraseña !== undefined) {
-      if (!nuevaContraseña || nuevaContraseña.length < 6) {
-        return res.status(400).json({ error: "La nueva contraseña debe tener al menos 6 caracteres" })
+      if (!nuevaContraseña || nuevaContraseña.length < 8) {
+        return res.status(400).json({ error: "La nueva contraseña debe tener al menos 8 caracteres" })
       }
       const userWithPass = await User.findById(id).select("+password")
       if (!userWithPass) return res.status(404).json({ error: "Usuario no encontrado" })
@@ -126,7 +128,8 @@ export async function actualizar(req, res) {
     const updated = await User.findByIdAndUpdate(id, update, { new: true }).select("-password").lean()
     res.json(toSafeUser(updated, original))
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    console.error('[Users]', error.message)
+    res.status(500).json({ error: 'Error interno del servidor' })
   }
 }
 
@@ -150,6 +153,7 @@ export async function eliminar(req, res) {
     await User.deleteOne({ _id: id })
     res.status(204).send()
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    console.error('[Users]', error.message)
+    res.status(500).json({ error: 'Error interno del servidor' })
   }
 }

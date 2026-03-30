@@ -30,6 +30,7 @@ function toProductoResponse(doc) {
     estado: o.estado ?? "activo",
     imagenes,
     stock: o.stock ?? 0,
+    whatsapp: o.whatsapp ?? "",
     usos: Array.isArray(o.usos) ? o.usos : [],
     caracteristicas: Array.isArray(o.caracteristicas) ? o.caracteristicas : [],
     fechaCreacion: o.createdAt,
@@ -51,11 +52,15 @@ function parseJsonArray(val) {
 
 export async function listarTodos(req, res) {
   try {
-    const { estado, tipo } = req.query
+    const { estado, tipo, limit = 500, skip = 0 } = req.query
     const filter = {}
     if (estado) filter.estado = estado
     if (tipo) filter.tipo = tipo
-    const productos = await Producto.find(filter).sort({ createdAt: -1 })
+    const productos = await Producto.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Number(limit), 1000))
+      .skip(Number(skip))
+      .lean()
     res.json(productos.map(toProductoResponse))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -78,7 +83,7 @@ export async function obtenerUno(req, res) {
 
 export async function crear(req, res) {
   try {
-    const { nombre, descripcion, precio, tipo, estado, stock, usos, caracteristicas } = req.body
+    const { nombre, descripcion, precio, tipo, estado, stock, whatsapp, usos, caracteristicas } = req.body
     const files = req.files || []
     if (!nombre) {
       return res.status(400).json({ error: "Faltan campos requeridos: nombre" })
@@ -105,6 +110,7 @@ export async function crear(req, res) {
       estado: estado === "inactivo" ? "inactivo" : "activo",
       imagenes,
       stock: Math.max(0, Number(stock) || 0),
+      whatsapp: (whatsapp ?? "").trim(),
       usos: parseJsonArray(usos),
       caracteristicas: parseJsonArray(caracteristicas),
     })
@@ -133,11 +139,12 @@ export async function actualizar(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
-    const { nombre, descripcion, precio, tipo, estado, stock, usos, caracteristicas } = req.body
+    const { nombre, descripcion, precio, tipo, estado, stock, whatsapp, usos, caracteristicas } = req.body
     const files = req.files || []
     const update = {}
     if (nombre !== undefined) update.nombre = (nombre || "").trim()
     if (descripcion !== undefined) update.descripcion = descripcion
+    if (whatsapp !== undefined) update.whatsapp = (whatsapp ?? "").trim()
 
     if (update.nombre !== undefined) {
       const otro = await Producto.findOne({

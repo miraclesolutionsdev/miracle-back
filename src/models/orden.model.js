@@ -19,9 +19,17 @@ const ordenSchema = new mongoose.Schema(
       index: true,
     },
     cliente: {
-      nombre: { type: String, required: true },
-      email: { type: String, default: '' },
+      nombre:   { type: String, required: true },
+      email:    { type: String, default: '' },
       whatsapp: { type: String, default: '' },
+      cedula:   { type: String, default: '' },
+    },
+    envio: {
+      direccion:         { type: String, default: '' },
+      barrio:            { type: String, default: '' },
+      unidadResidencial: { type: String, default: '' },
+      torre:             { type: String, default: '' },
+      apto:              { type: String, default: '' },
     },
     productos: [
       {

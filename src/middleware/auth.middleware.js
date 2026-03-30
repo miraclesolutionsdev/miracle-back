@@ -1,10 +1,14 @@
 import jwt from "jsonwebtoken"
 
-const JWT_SECRET = process.env.JWT_SECRET || "tu-clave-secreta-cambiar-en-produccion"
+const JWT_SECRET = process.env.JWT_SECRET
 
 export async function requireAuth(req, res, next) {
-  const authHeader = req.headers.authorization
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null
+  // Cookie HttpOnly tiene prioridad; Authorization header como fallback
+  const token =
+    req.cookies?.miracle_token ||
+    (req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.slice(7)
+      : null)
 
   if (!token) {
     return res.status(401).json({ error: "No autorizado. Inicia sesión para continuar." })

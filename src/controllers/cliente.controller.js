@@ -20,10 +20,14 @@ function toClienteResponse(doc) {
 
 export async function listarTodos(req, res) {
   try {
-    const { estado } = req.query
+    const { estado, limit = 500, skip = 0 } = req.query
     const filter = {}
     if (estado) filter.estado = estado
-    const clientes = await Cliente.find(filter).sort({ createdAt: -1 })
+    const clientes = await Cliente.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Number(limit), 1000))
+      .skip(Number(skip))
+      .lean()
     res.json(clientes.map(toClienteResponse))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -86,20 +90,6 @@ export async function actualizar(req, res) {
     if (miracleCoins !== undefined) update.miracleCoins = Math.max(0, Number(miracleCoins) || 0)
 
     const cliente = await Cliente.findByIdAndUpdate(id, update, { new: true })
-    if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" })
-    res.json(toClienteResponse(cliente))
-  } catch (error) {
-    res.status(500).json({ error: error.message })
-  }
-}
-
-export async function inactivar(req, res) {
-  try {
-    const { id } = req.params
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "ID de cliente no válido" })
-    }
-    const cliente = await Cliente.findByIdAndUpdate(id, { estado: "inactivo" }, { new: true })
     if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" })
     res.json(toClienteResponse(cliente))
   } catch (error) {

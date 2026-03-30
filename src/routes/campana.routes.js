@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { listar, obtenerUno, crear, actualizar, actualizarEstado } from "../controllers/campana.controller.js"
+import { listar, obtenerUno, crear, actualizar, actualizarEstado, eliminar } from "../controllers/campana.controller.js"
 import { requireAuth } from "../middleware/auth.middleware.js"
 
 const router = Router()
@@ -11,5 +11,6 @@ router.get("/:id", obtenerUno)
 router.post("/", crear)
 router.put("/:id", actualizar)
 router.patch("/:id/estado", actualizarEstado)
+router.delete("/:id", eliminar)
 
 export default router
