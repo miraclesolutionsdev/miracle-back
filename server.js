@@ -26,6 +26,9 @@ import ordenRoutes from "./src/routes/orden.routes.js"
 
 const app = express()
 
+// Vercel corre detrás de un proxy - necesario para rate-limit y cookies
+app.set("trust proxy", 1)
+
 // CORS - debe ir ANTES de helmet para que las cabeceras no sean sobrescritas
 const corsOptions = {
   origin: [
@@ -50,6 +53,7 @@ const globalLimiter = rateLimit({
   message: { error: "Demasiadas solicitudes. Intenta de nuevo en 15 minutos." },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
 })
 app.use(globalLimiter)
 
