@@ -9,7 +9,6 @@ if (missing.length) {
 }
 
 import express from "express"
-import cors from "cors"
 import cookieParser from "cookie-parser"
 import helmet from "helmet"
 import rateLimit from "express-rate-limit"
@@ -29,19 +28,30 @@ const app = express()
 // Vercel corre detrás de un proxy - necesario para rate-limit y cookies
 app.set("trust proxy", 1)
 
-// CORS - debe ir ANTES de helmet para que las cabeceras no sean sobrescritas
-const corsOptions = {
-  origin: [
-    "https://miracle-front-jade.vercel.app",
-    "https://www.miraclesolutions.com.co",
-    "https://miraclesolutions.com.co",
-    "http://localhost:5173",
-    "http://localhost:3000"
-  ],
-  credentials: true,
-  optionsSuccessStatus: 200
-}
-app.use(cors(corsOptions))
+const ALLOWED_ORIGINS = [
+  "https://miracle-front-jade.vercel.app",
+  "https://www.miraclesolutions.com.co",
+  "https://miraclesolutions.com.co",
+  "http://localhost:5173",
+  "http://localhost:3000",
+]
+
+// CORS manual - antes de todo para que cada respuesta (incluyendo errores) lleve los headers
+app.use((req, res, next) => {
+  const origin = req.headers.origin
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin)
+    res.setHeader("Access-Control-Allow-Credentials", "true")
+    res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS")
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    res.setHeader("Vary", "Origin")
+  }
+  if (req.method === "OPTIONS") {
+    return res.status(200).end()
+  }
+  next()
+})
+
 app.use(helmet({ crossOriginResourcePolicy: false, contentSecurityPolicy: false }))
 app.use(cookieParser())
 app.use(express.json({ limit: "10mb" }))
