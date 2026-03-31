@@ -65,6 +65,7 @@ export async function login(req, res) {
     })
 
     res.json({
+      token,
       user: {
         id: user._id.toString(),
         email: user.email,
