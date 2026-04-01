@@ -30,6 +30,7 @@ export async function crearOrdenWhatsApp(req, res) {
       nombre,
       telefono,
       ciudad      = '',
+      ciudadBarrio = '',
       direccion   = '',
       producto: productoNombre,
       talla       = '',
@@ -65,6 +66,9 @@ export async function crearOrdenWhatsApp(req, res) {
     ].filter(Boolean).join(' - ')
 
     // Crear preferencia de pago en MercadoPago
+    // Acepta ciudad o ciudadBarrio (ElevenLabs envía ciudadBarrio)
+    const ciudadFinal = ciudadBarrio || ciudad
+
     const FRONT_URL = process.env.FRONT_URL || 'https://www.miraclesolutions.com.co'
     const preference = new Preference(client)
     const mpResult = await preference.create({
@@ -95,7 +99,7 @@ export async function crearOrdenWhatsApp(req, res) {
           talla,
           color,
           envioDireccion: direccion,
-          envioBarrio:    ciudad,
+          envioBarrio:    ciudadFinal,
         },
       },
     })
@@ -110,8 +114,8 @@ export async function crearOrdenWhatsApp(req, res) {
         $set: {
           nombreEmpresa: nombre,
           whatsapp:      telefono,
-          ...(ciudad    && { ciudadBarrio: ciudad }),
-          ...(direccion && { direccion }),
+          ...(ciudadFinal && { ciudadBarrio: ciudadFinal }),
+          ...(direccion  && { direccion }),
           estado: 'activo',
         },
         $setOnInsert: { email: `wa_${telefono}@whatsapp.local` },
@@ -134,7 +138,7 @@ export async function crearOrdenWhatsApp(req, res) {
       },
       envio: {
         direccion,
-        barrio: ciudad,
+        barrio: ciudadFinal,
       },
       productos: [
         {
