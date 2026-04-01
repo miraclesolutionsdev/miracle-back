@@ -166,26 +166,6 @@ export async function crearPreferencia(req, res) {
 // RECIBIR WEBHOOK
 // ─────────────────────────────────────────────
 export async function recibirWebhook(req, res) {
-  // ── Logs de diagnóstico — eliminar cuando confirmes que todo funciona ──
-  console.log('[MP DEBUG] query     :', JSON.stringify(req.query))
-  console.log('[MP DEBUG] x-signature :', req.headers['x-signature'])
-  console.log('[MP DEBUG] x-request-id:', req.headers['x-request-id'])
-  // ────────────────────────────────────────────────────────────────────────
-
-  // Validar firma HMAC solo en producción
-  if (process.env.NODE_ENV === 'production') {
-    if (process.env.MP_WEBHOOK_SECRET) {
-      if (!validateWebhookSignature(req)) {
-        console.warn('[MP] Firma HMAC inválida. Rechazando webhook.')
-        return res.status(401).json({ error: 'Firma de webhook inválida' })
-      }
-    } else {
-      console.warn('[MP] ⚠️  MP_WEBHOOK_SECRET no configurado. Configúralo para mayor seguridad.')
-    }
-  } else {
-    console.log('[DEV] Validación HMAC omitida en desarrollo.')
-  }
-
   try {
     const { type, data } = req.body
 

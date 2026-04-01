@@ -2,7 +2,6 @@ import mongoose from "mongoose"
 
 const piezaAudiovisualSchema = new mongoose.Schema(
   {
-    tenantId: { type: mongoose.Schema.Types.ObjectId, ref: "Tenant", default: null },
     tipo: {
       type: String,
       enum: { values: ["Video", "Imagen"], message: "Tipo no válido" },

@@ -189,3 +189,65 @@ export async function crearOrdenWhatsApp(req, res) {
     return res.status(500).json({ error: 'Error interno al crear la orden.' })
   }
 }
+
+// ── Conversaciones ElevenLabs ─────────────────────────────────────────────
+
+const EL_BASE = 'https://api.elevenlabs.io'
+
+function elHeaders() {
+  return {
+    'xi-api-key': (process.env.ELEVENLABS_API_KEY || '').trim(),
+    'Content-Type': 'application/json',
+  }
+}
+
+export async function listarConversaciones(req, res) {
+  const agentId = (process.env.ELEVENLABS_AGENT_ID || '').trim()
+  const apiKey  = (process.env.ELEVENLABS_API_KEY  || '').trim()
+
+  if (!agentId || !apiKey) {
+    return res.status(503).json({ error: 'Faltan ELEVENLABS_API_KEY o ELEVENLABS_AGENT_ID en las variables de entorno.' })
+  }
+
+  try {
+    const { page_size = 50, cursor } = req.query
+    const params = new URLSearchParams({ agent_id: agentId, page_size })
+    if (cursor) params.set('cursor', cursor)
+
+    const r = await fetch(`${EL_BASE}/v1/convai/conversations?${params}`, { headers: elHeaders() })
+    const data = await r.json()
+
+    if (!r.ok) {
+      console.error('[EL] Error listando conversaciones:', data)
+      return res.status(r.status).json({ error: data.detail?.message || 'Error al obtener conversaciones de ElevenLabs' })
+    }
+
+    return res.json(data)
+  } catch (err) {
+    console.error('[EL] Error:', err.message)
+    return res.status(500).json({ error: 'Error interno al consultar ElevenLabs.' })
+  }
+}
+
+export async function obtenerConversacion(req, res) {
+  const apiKey = (process.env.ELEVENLABS_API_KEY || '').trim()
+  if (!apiKey) {
+    return res.status(503).json({ error: 'Falta ELEVENLABS_API_KEY en las variables de entorno.' })
+  }
+
+  try {
+    const { id } = req.params
+    const r = await fetch(`${EL_BASE}/v1/convai/conversations/${id}`, { headers: elHeaders() })
+    const data = await r.json()
+
+    if (!r.ok) {
+      console.error('[EL] Error obteniendo conversación:', data)
+      return res.status(r.status).json({ error: data.detail?.message || 'Error al obtener conversación de ElevenLabs' })
+    }
+
+    return res.json(data)
+  } catch (err) {
+    console.error('[EL] Error:', err.message)
+    return res.status(500).json({ error: 'Error interno al consultar ElevenLabs.' })
+  }
+}

@@ -64,7 +64,6 @@ export async function crear(req, res) {
       email: emailNorm,
       password: hash,
       nombre: (nombre || "").trim(),
-      tenantId: null,
       activo: true,
     })
     res.status(201).json(toSafeUser(user))

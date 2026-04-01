@@ -10,11 +10,6 @@ const userSchema = new mongoose.Schema(
     },
     password: { type: String, required: [true, "La contraseña es obligatoria"], select: false },
     nombre: { type: String, trim: true, default: "" },
-    tenantId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Tenant",
-      default: null,
-    },
     activo: { type: Boolean, default: true },
     isOriginalAdmin: { type: Boolean, default: false },
   },

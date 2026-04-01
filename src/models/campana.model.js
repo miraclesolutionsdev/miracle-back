@@ -2,11 +2,6 @@ import mongoose from "mongoose"
 
 const campanaSchema = new mongoose.Schema(
   {
-    tenantId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Tenant",
-      default: null,
-    },
     nombre: { type: String, trim: true, default: "" },
     producto: { type: String, trim: true, default: "" },
     piezaCreativo: { type: String, trim: true, default: "" },
