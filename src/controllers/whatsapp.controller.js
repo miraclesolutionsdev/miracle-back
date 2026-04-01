@@ -1,6 +1,7 @@
 import { MercadoPagoConfig, Preference } from 'mercadopago'
 import Producto from '../models/producto.model.js'
 import Orden from '../models/orden.model.js'
+import Ticket from '../models/ticket.model.js'
 import Cliente from '../models/cliente.model.js'
 import { generarNumeroOrden } from '../utils/ordenUtils.js'
 
@@ -127,7 +128,7 @@ export async function crearOrdenWhatsApp(req, res) {
     const ordenNumero = await generarNumeroOrden()
 
     // Crear orden con estado: no pagado / no preparado / origen whatsapp
-    await Orden.create({
+    const nuevaOrden = await Orden.create({
       ordenNumero,
       clienteId: cliente._id,
       cliente: {
@@ -158,6 +159,21 @@ export async function crearOrdenWhatsApp(req, res) {
       preferenceId,
       talla,
       color,
+    })
+
+    // Crear ticket de creación
+    await Ticket.create({
+      numeroTicket: `TK-${ordenNumero}`,
+      ordenId:      nuevaOrden._id,
+      tipo:         'creacion',
+      descripcion: [
+        `Orden creada desde WhatsApp (ElevenLabs).`,
+        `Cliente: ${nombre} | Tel: ${telefono}`,
+        `Producto: ${itemTitle}${cantidad > 1 ? ` x${cantidad}` : ''}`,
+        `Barrio/Ciudad: ${ciudadFinal || 'No indicado'}`,
+        `Dirección: ${direccion || 'No indicada'}`,
+      ].join(' | '),
+      creador: 'whatsapp-bot',
     })
 
     console.log(`[WA] ✓ Orden ${ordenNumero} | ${nombre} | ${producto.nombre}${talla ? ` T:${talla}` : ''}${color ? ` C:${color}` : ''}`)
