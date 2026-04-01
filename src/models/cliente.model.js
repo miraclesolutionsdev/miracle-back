@@ -10,8 +10,8 @@ const clienteSchema = new mongoose.Schema(
     cedulaNit: { type: String, trim: true, default: "" },
     email: {
       type: String,
-      required: [true, "El email es obligatorio"],
       trim: true,
+      default: '',
     },
     whatsapp: { type: String, trim: true, default: "" },
     direccion: { type: String, trim: true, default: "" },

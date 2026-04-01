@@ -119,7 +119,7 @@ export async function crearOrdenWhatsApp(req, res) {
           ...(direccion  && { direccion }),
           estado: 'activo',
         },
-        $setOnInsert: { email: `wa_${telefono}@whatsapp.local` },
+        $setOnInsert: { email: '' },
       },
       { upsert: true, new: true }
     )
@@ -133,7 +133,7 @@ export async function crearOrdenWhatsApp(req, res) {
       clienteId: cliente._id,
       cliente: {
         nombre,
-        email:    cliente.email || '',
+        email:    '',
         whatsapp: telefono,
         cedula:   '',
       },
