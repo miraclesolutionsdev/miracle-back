@@ -14,10 +14,13 @@ import {
  */
 export async function listarOrdenes(req, res) {
   try {
-    const { estado, desde, hasta, email, ordenNumero, limit = 10, skip = 0 } = req.query
+    const { estado, estadoPago, estadoPreparacion, origen, desde, hasta, email, ordenNumero, limit = 10, skip = 0 } = req.query
 
     const filtro = {}
-    if (estado) filtro.estado = estado
+    if (estado)            filtro.estado            = estado
+    if (estadoPago)        filtro.estadoPago        = estadoPago
+    if (estadoPreparacion) filtro.estadoPreparacion = estadoPreparacion
+    if (origen)            filtro.origen            = origen
     // Email: coincidencia exacta (evita inyección via $regex)
     if (email) filtro['cliente.email'] = String(email).trim().toLowerCase()
     // OrdenNumero: escapar caracteres especiales de regex
@@ -313,6 +316,80 @@ export async function crearTicketManual(req, res) {
   } catch (err) {
     console.error('[Ordenes] Error creando ticket:', err.message)
     res.status(500).json({ error: 'Error al crear ticket' })
+  }
+}
+
+/**
+ * CAMBIAR ESTADO DE PREPARACIÓN
+ * PATCH /ordenes/:id/preparacion
+ * Body: { estadoPreparacion: 'preparado' | 'no_preparado' }
+ */
+export async function actualizarPreparacion(req, res) {
+  try {
+    const { id } = req.params
+    const { estadoPreparacion } = req.body
+
+    if (!['preparado', 'no_preparado'].includes(estadoPreparacion)) {
+      return res.status(400).json({ error: 'estadoPreparacion debe ser "preparado" o "no_preparado"' })
+    }
+
+    const orden = await Orden.findByIdAndUpdate(
+      id,
+      { estadoPreparacion },
+      { new: true }
+    )
+    if (!orden) return res.status(404).json({ error: 'Orden no encontrada' })
+
+    await Ticket.create({
+      numeroTicket: `TK-${orden.ordenNumero}-PREP-${Date.now()}`,
+      ordenId: orden._id,
+      tipo: 'actualización',
+      descripcion: `Preparación: ${estadoPreparacion === 'preparado' ? '✓ Marcado como preparado' : 'Marcado como no preparado'}`,
+      cambios: { campo: 'estadoPreparacion', valorNuevo: estadoPreparacion },
+      creador: 'sistema',
+    })
+
+    res.json({ orden: orden.toObject() })
+  } catch (err) {
+    console.error('[Ordenes] Error actualizando preparación:', err.message)
+    res.status(500).json({ error: 'Error al actualizar preparación' })
+  }
+}
+
+/**
+ * CAMBIAR ESTADO DE PAGO (override manual)
+ * PATCH /ordenes/:id/pago
+ * Body: { estadoPago: 'pagado' | 'no_pagado' }
+ */
+export async function actualizarPago(req, res) {
+  try {
+    const { id } = req.params
+    const { estadoPago } = req.body
+
+    if (!['pagado', 'no_pagado'].includes(estadoPago)) {
+      return res.status(400).json({ error: 'estadoPago debe ser "pagado" o "no_pagado"' })
+    }
+
+    const orden = await Orden.findByIdAndUpdate(
+      id,
+      { estadoPago },
+      { new: true }
+    )
+    if (!orden) return res.status(404).json({ error: 'Orden no encontrada' })
+
+    await Ticket.create({
+      numeroTicket: `TK-${orden.ordenNumero}-PAGO-${Date.now()}`,
+      ordenId: orden._id,
+      tipo: estadoPago === 'pagado' ? 'pago_recibido' : 'actualización',
+      descripcion: estadoPago === 'pagado' ? '✓ Pago confirmado manualmente' : 'Pago revertido manualmente',
+      cambios: { campo: 'estadoPago', valorNuevo: estadoPago },
+      creador: 'sistema',
+    })
+
+    res.json({ orden: orden.toObject() })
+  } catch (err) {
+    console.error('[Ordenes] Error actualizando pago:', err.message)
+    res.status(500).json({ error: 'Error al actualizar pago' })
   }
 }
 

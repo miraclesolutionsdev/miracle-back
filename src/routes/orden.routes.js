@@ -4,6 +4,8 @@ import {
   obtenerOrden,
   crearOrden,
   actualizarEstadoOrden,
+  actualizarPreparacion,
+  actualizarPago,
   crearTicketManual,
   cancelarOrden,
 } from '../controllers/orden.controller.js'
@@ -18,6 +20,8 @@ router.get('/', listarOrdenes)
 router.get('/:id', obtenerOrden)
 router.post('/', crearOrden)
 router.patch('/:id/estado', actualizarEstadoOrden)
+router.patch('/:id/preparacion', actualizarPreparacion)
+router.patch('/:id/pago', actualizarPago)
 router.patch('/:id/cancelar', cancelarOrden)
 router.post('/:id/tickets', crearTicketManual)
 

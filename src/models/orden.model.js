@@ -54,6 +54,23 @@ const ordenSchema = new mongoose.Schema(
       enum: ['pendiente', 'procesando', 'completada', 'entregada', 'cancelada'],
       default: 'pendiente',
     },
+    estadoPago: {
+      type: String,
+      enum: ['no_pagado', 'pagado'],
+      default: 'no_pagado',
+    },
+    estadoPreparacion: {
+      type: String,
+      enum: ['no_preparado', 'preparado'],
+      default: 'no_preparado',
+    },
+    origen: {
+      type: String,
+      enum: ['web', 'whatsapp'],
+      default: 'web',
+    },
+    talla: { type: String, default: '' },
+    color: { type: String, default: '' },
     metodoPago: {
       type: String,
       enum: ['mercadopago', 'manual'],
@@ -63,7 +80,11 @@ const ordenSchema = new mongoose.Schema(
       type: String,
       sparse: true,
       unique: true,
-      // MercadoPago payment ID
+    },
+    preferenceId: {
+      type: String,
+      sparse: true,
+      index: true,
     },
     notas: {
       type: String,
@@ -74,6 +95,7 @@ const ordenSchema = new mongoose.Schema(
 )
 
 // Índices para búsquedas comunes
+ordenSchema.index({ estadoPago: 1, estadoPreparacion: 1, createdAt: -1 })
 ordenSchema.index({ estado: 1, createdAt: -1 })
 ordenSchema.index({ 'cliente.email': 1 })
 

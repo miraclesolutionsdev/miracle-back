@@ -206,112 +206,141 @@ export async function recibirWebhook(req, res) {
       return res.sendStatus(200)
     }
 
-    // ===== CREAR ORDEN AUTOMÁTICAMENTE =====
-    console.log(`[MP] Creando orden para producto: ${producto.nombre}`)
+    // ===== PROCESAR ORDEN =====
+    // Primero verificar si el pago corresponde a una orden de WhatsApp existente
+    const ordenExistente = pago.preference_id
+      ? await Orden.findOne({ preferenceId: pago.preference_id })
+      : null
 
-    // Extrae datos del payer (fallback si el formulario no los envió)
-    const payerFirst = (pago.payer?.first_name || pago.additional_info?.payer?.first_name || '').trim()
-    const payerLast  = (pago.payer?.last_name  || pago.additional_info?.payer?.last_name  || '').trim()
-    const payerEmail = (pago.payer?.email || '').trim()
-    const payerPhone = pago.payer?.phone?.number ? String(pago.payer.phone.number) : ''
+    if (ordenExistente) {
+      // ── Flujo WhatsApp: actualizar la orden que ya existe ──
+      console.log(`[MP] Orden WhatsApp encontrada: ${ordenExistente.ordenNumero}`)
 
-    // Leer metadata del formulario (MP convierte camelCase → snake_case)
-    const m = pago.metadata || {}
-    const clienteNombre  = (m.cliente_nombre  || m.clienteNombre  || [payerFirst, payerLast].filter(Boolean).join(' ') || payerEmail.split('@')[0]).trim()
-    const clienteCelular = (m.cliente_celular || m.clienteCelular || payerPhone).trim()
-    const emailComprador = (m.cliente_email   || m.clienteEmail   || payerEmail || 'desconocido@nointent.com').trim()
-    const clienteCedula  = (m.cliente_cedula  || m.clienteCedula  || '').trim()
-    const envioDireccion = (m.envio_direccion || m.envioDireccion || '').trim()
-    const envioBarrio    = (m.envio_barrio    || m.envioBarrio    || '').trim()
-    const envioUnidad    = (m.envio_unidad    || m.envioUnidad    || '').trim()
-    const envioTorre     = (m.envio_torre     || m.envioTorre     || '').trim()
-    const envioApto      = (m.envio_apto      || m.envioApto      || '').trim()
+      await Orden.findByIdAndUpdate(ordenExistente._id, {
+        estadoPago:        'pagado',
+        estadoPreparacion: 'no_preparado',
+        estado:            'procesando',
+        pagoId:            String(paymentId),
+      })
 
-    console.log(`[MP] Cliente metadata: nombre="${clienteNombre}" email="${emailComprador}" celular="${clienteCelular}"`)
-    console.log(`[MP] Envío metadata: dir="${envioDireccion}" barrio="${envioBarrio}" unidad="${envioUnidad}" torre="${envioTorre}" apto="${envioApto}"`)
+      await Ticket.create({
+        numeroTicket: `TK-${ordenExistente.ordenNumero}-PAGO`,
+        ordenId:      ordenExistente._id,
+        tipo:         'pago_recibido',
+        descripcion: [
+          `Pago aprobado vía MercadoPago (WhatsApp).`,
+          `Cliente: ${ordenExistente.cliente.nombre}`,
+          `Producto: ${ordenExistente.productos[0]?.productoNombre}`,
+          `Monto: $${Number(pago.transaction_amount).toLocaleString('es-CO')}`,
+          `ID de pago MP: ${paymentId}`,
+        ].join(' | '),
+        creador: 'sistema-mercadopago',
+      })
 
-    // Upsert de cliente con todos los datos del formulario
-    let cliente = await Cliente.findOneAndUpdate(
-      { email: emailComprador },
-      {
-        $set: {
-          nombreEmpresa: clienteNombre,
-          whatsapp: clienteCelular,
-          ...(clienteCedula  && { cedulaNit:    clienteCedula }),
-          ...(envioDireccion && { direccion:    envioDireccion }),
-          ...(envioBarrio    && { ciudadBarrio: envioBarrio }),
-          estado: 'activo',
-        },
-        $setOnInsert: { email: emailComprador },
-      },
-      { upsert: true, new: true }
-    )
-    console.log(`[MP] Cliente upsert: ${clienteNombre} <${emailComprador}>`)
+      if (producto.tipo === 'producto') {
+        await Producto.findOneAndUpdate(
+          { _id: productoId, tipo: 'producto', stock: { $gte: cantidad } },
+          { $inc: { stock: -cantidad } }
+        )
+      }
 
-    // Generar número de orden
-    const ordenNumero = await generarNumeroOrden()
+      console.log(`[MP] ✓ Orden WhatsApp marcada como pagada: ${ordenExistente.ordenNumero}`)
+    } else {
+      // ── Flujo Web: crear orden nueva (compra desde la tienda) ──
+      console.log(`[MP] Creando orden Web para producto: ${producto.nombre}`)
 
-    // Crear orden
-    const nuevaOrden = await Orden.create({
-      ordenNumero,
-      clienteId: cliente._id,
-      cliente: {
-        nombre:   clienteNombre,
-        email:    emailComprador,
-        whatsapp: clienteCelular,
-        cedula:   clienteCedula,
-      },
-      envio: {
-        direccion:         envioDireccion,
-        barrio:            envioBarrio,
-        unidadResidencial: envioUnidad,
-        torre:             envioTorre,
-        apto:              envioApto,
-      },
-      productos: [
+      const payerFirst = (pago.payer?.first_name || pago.additional_info?.payer?.first_name || '').trim()
+      const payerLast  = (pago.payer?.last_name  || pago.additional_info?.payer?.last_name  || '').trim()
+      const payerEmail = (pago.payer?.email || '').trim()
+      const payerPhone = pago.payer?.phone?.number ? String(pago.payer.phone.number) : ''
+
+      const m = pago.metadata || {}
+      const clienteNombre  = (m.cliente_nombre  || m.clienteNombre  || [payerFirst, payerLast].filter(Boolean).join(' ') || payerEmail.split('@')[0]).trim()
+      const clienteCelular = (m.cliente_celular || m.clienteCelular || payerPhone).trim()
+      const emailComprador = (m.cliente_email   || m.clienteEmail   || payerEmail || 'desconocido@nointent.com').trim()
+      const clienteCedula  = (m.cliente_cedula  || m.clienteCedula  || '').trim()
+      const envioDireccion = (m.envio_direccion || m.envioDireccion || '').trim()
+      const envioBarrio    = (m.envio_barrio    || m.envioBarrio    || '').trim()
+      const envioUnidad    = (m.envio_unidad    || m.envioUnidad    || '').trim()
+      const envioTorre     = (m.envio_torre     || m.envioTorre     || '').trim()
+      const envioApto      = (m.envio_apto      || m.envioApto      || '').trim()
+
+      const cliente = await Cliente.findOneAndUpdate(
+        { email: emailComprador },
         {
-          productoId: producto._id,
-          productoNombre: producto.nombre,
-          cantidad,
-          precioUnitario: Number(pago.transaction_amount ?? 0) / cantidad,
-          precioTotal: Number(pago.transaction_amount ?? 0),
+          $set: {
+            nombreEmpresa: clienteNombre,
+            whatsapp: clienteCelular,
+            ...(clienteCedula  && { cedulaNit:    clienteCedula }),
+            ...(envioDireccion && { direccion:    envioDireccion }),
+            ...(envioBarrio    && { ciudadBarrio: envioBarrio }),
+            estado: 'activo',
+          },
+          $setOnInsert: { email: emailComprador },
         },
-      ],
-      totalMonto: Number(pago.transaction_amount ?? 0),
-      estado: 'pendiente',
-      metodoPago: 'mercadopago',
-      pagoId: String(paymentId),
-    })
-
-    console.log(`[MP] ✓ Orden creada: ${ordenNumero}`)
-
-    // Crear ticket automático de pago recibido
-    const ticket = await Ticket.create({
-      numeroTicket: `TK-${ordenNumero}`,
-      ordenId: nuevaOrden._id,
-      tipo: 'pago_recibido',
-      descripcion: [
-        `Pago aprobado vía MercadoPago.`,
-        `Cliente: ${clienteNombre} (${emailComprador})`,
-        `Producto: ${producto.nombre}${cantidad > 1 ? ` x${cantidad}` : ''}`,
-        `Monto: $${Number(pago.transaction_amount).toLocaleString('es-CO')}`,
-        `ID de pago MP: ${paymentId}`,
-      ].join(' | '),
-      creador: 'sistema-mercadopago',
-    })
-
-    console.log(`[MP] ✓ Ticket creado: ${ticket.numeroTicket}`)
-
-    // Decrementar stock de forma atómica — evita race condition con compras simultáneas
-    if (producto.tipo === 'producto') {
-      await Producto.findOneAndUpdate(
-        { _id: productoId, tipo: 'producto', stock: { $gte: cantidad } },
-        { $inc: { stock: -cantidad } }
+        { upsert: true, new: true }
       )
-      console.log(`[MP] ✓ Stock decrementado: ${producto.nombre} (-${cantidad})`)
-    }
 
-    console.log(`[MP] ✓ Orden procesada completamente: ${ordenNumero}`)
+      const ordenNumero = await generarNumeroOrden()
+
+      const nuevaOrden = await Orden.create({
+        ordenNumero,
+        clienteId: cliente._id,
+        cliente: {
+          nombre:   clienteNombre,
+          email:    emailComprador,
+          whatsapp: clienteCelular,
+          cedula:   clienteCedula,
+        },
+        envio: {
+          direccion:         envioDireccion,
+          barrio:            envioBarrio,
+          unidadResidencial: envioUnidad,
+          torre:             envioTorre,
+          apto:              envioApto,
+        },
+        productos: [
+          {
+            productoId: producto._id,
+            productoNombre: producto.nombre,
+            cantidad,
+            precioUnitario: Number(pago.transaction_amount ?? 0) / cantidad,
+            precioTotal: Number(pago.transaction_amount ?? 0),
+          },
+        ],
+        totalMonto:        Number(pago.transaction_amount ?? 0),
+        estado:            'procesando',
+        estadoPago:        'pagado',
+        estadoPreparacion: 'no_preparado',
+        origen:            'web',
+        metodoPago:        'mercadopago',
+        pagoId:            String(paymentId),
+        preferenceId:      pago.preference_id || '',
+      })
+
+      await Ticket.create({
+        numeroTicket: `TK-${ordenNumero}`,
+        ordenId:      nuevaOrden._id,
+        tipo:         'pago_recibido',
+        descripcion: [
+          `Pago aprobado vía MercadoPago.`,
+          `Cliente: ${clienteNombre} (${emailComprador})`,
+          `Producto: ${producto.nombre}${cantidad > 1 ? ` x${cantidad}` : ''}`,
+          `Monto: $${Number(pago.transaction_amount).toLocaleString('es-CO')}`,
+          `ID de pago MP: ${paymentId}`,
+        ].join(' | '),
+        creador: 'sistema-mercadopago',
+      })
+
+      if (producto.tipo === 'producto') {
+        await Producto.findOneAndUpdate(
+          { _id: productoId, tipo: 'producto', stock: { $gte: cantidad } },
+          { $inc: { stock: -cantidad } }
+        )
+      }
+
+      console.log(`[MP] ✓ Orden Web creada y pagada: ${ordenNumero}`)
+    }
   } catch (err) {
     console.error('[MP] Error procesando webhook:', err.message, err.stack)
   }

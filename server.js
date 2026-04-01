@@ -22,6 +22,7 @@ import campanaRoutes from "./src/routes/campana.routes.js"
 import iaRoutes from "./src/routes/ia.routes.js"
 import pagoRoutes from "./src/routes/pago.routes.js"
 import ordenRoutes from "./src/routes/orden.routes.js"
+import whatsappRoutes from "./src/routes/whatsapp.routes.js"
 
 const app = express()
 
@@ -107,6 +108,9 @@ app.use("/pagos", pagoRoutes)
 
 // Órdenes
 app.use("/ordenes", ordenRoutes)
+
+// WhatsApp (tool de ElevenLabs)
+app.use("/whatsapp", whatsappRoutes)
 
 // Puerto - solo para desarrollo local (Vercel usa serverless)
 const PORT = process.env.PORT || 3000
