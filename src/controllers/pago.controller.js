@@ -13,27 +13,11 @@ const client = new MercadoPagoConfig({
 /**
  * Valida la firma HMAC-SHA256 del webhook de MercadoPago.
  * Documentación: https://www.mercadopago.com.ar/developers/es/docs/your-integrations/notifications/webhooks
- *
- * Requiere la variable de entorno MP_WEBHOOK_SECRET configurada en el dashboard de MP.
- * Si no está configurada, se registra una advertencia y se permite el paso (útil en desarrollo).
  */
-function hmacSha256(key, message) {
-  return crypto.createHmac('sha256', key).update(message).digest('hex')
-}
-
-function safeCompare(a, b) {
-  try {
-    return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'))
-  } catch {
-    return false
-  }
-}
-
 function validateWebhookSignature(req) {
-  // Trim para eliminar cualquier whitespace/newline que pueda venir del copy-paste en Vercel
   const secret = (process.env.MP_WEBHOOK_SECRET || '').trim()
   if (!secret) {
-    console.error('[MP] MP_WEBHOOK_SECRET no configurado. Rechazando webhook.')
+    console.error('[MP] MP_WEBHOOK_SECRET no configurado.')
     return false
   }
 
@@ -41,23 +25,29 @@ function validateWebhookSignature(req) {
   const xRequestId = req.headers['x-request-id']
 
   if (!xSignature || !xRequestId) {
-    console.warn('[MP] Webhook sin headers de firma (x-signature/x-request-id). Rechazando.')
+    console.warn('[MP] Headers de firma ausentes (x-signature / x-request-id).')
     return false
   }
 
-  // MP firma usando el query param 'data.id', no el body
-  const dataId = req.query?.['data.id'] ?? req.body?.data?.id
-  if (dataId == null) {
-    console.warn('[MP] Webhook sin data.id en query ni en body.')
+  // data.id viene en el query string: ?data.id=123
+  // Express puede parsearlo como objeto anidado (req.query.data.id)
+  // o como clave literal (req.query['data.id']), dependiendo del parser.
+  const dataId =
+    req.query?.['data.id'] ??   // intento 1: clave literal con punto
+    req.query?.data?.id ??      // intento 2: objeto anidado
+    req.body?.data?.id          // intento 3: fallback al body
+
+  if (!dataId) {
+    console.warn('[MP] No se encontró data.id en query ni en body.')
     return false
   }
 
-  // Parsear "ts=<timestamp>,v1=<hash>"
+  // Parsear "ts=<timestamp>,v1=<hash>" del header x-signature
   let ts, v1
   for (const part of xSignature.split(',')) {
     const eqIdx = part.trim().indexOf('=')
     if (eqIdx === -1) continue
-    const key = part.trim().slice(0, eqIdx)
+    const key   = part.trim().slice(0, eqIdx)
     const value = part.trim().slice(eqIdx + 1)
     if (key === 'ts') ts = value
     if (key === 'v1') v1 = value
@@ -68,16 +58,33 @@ function validateWebhookSignature(req) {
     return false
   }
 
+  // Manifest exacto según documentación oficial de MP
   const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts}`
-  const computedRaw = hmacSha256(secret, manifest)
 
-  // Soporte para secret en formato hex (32 bytes) o string UTF-8
-  const isHex = secret.length === 64 && /^[0-9a-f]+$/i.test(secret)
-  const computedHexKey = isHex ? hmacSha256(Buffer.from(secret, 'hex'), manifest) : null
+  // MP firma usando el secret como string UTF-8 (nunca decodificado desde hex)
+  const computed = crypto
+    .createHmac('sha256', secret)
+    .update(manifest)
+    .digest('hex')
 
-  return safeCompare(computedRaw, v1) || (computedHexKey ? safeCompare(computedHexKey, v1) : false)
+  // Logs de diagnóstico — puedes eliminarlos una vez que confirmes que funciona
+  console.log('[MP] manifest :', manifest)
+  console.log('[MP] computed  :', computed)
+  console.log('[MP] v1 recibido:', v1)
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(computed, 'hex'),
+      Buffer.from(v1, 'hex')
+    )
+  } catch {
+    return false
+  }
 }
 
+// ─────────────────────────────────────────────
+// CREAR PREFERENCIA
+// ─────────────────────────────────────────────
 export async function crearPreferencia(req, res) {
   try {
     const {
@@ -93,9 +100,11 @@ export async function crearPreferencia(req, res) {
       envioTorre,
       envioApto,
     } = req.body
+
     if (!productoId) {
       return res.status(400).json({ error: 'productoId es requerido' })
     }
+
     const cantidad = Math.max(1, Math.min(99, parseInt(cantidadRaw) || 1))
 
     const producto = await Producto.findById(productoId)
@@ -115,11 +124,11 @@ export async function crearPreferencia(req, res) {
       body: {
         items: [
           {
-            id: producto._id.toString(),
-            title: producto.nombre,
+            id:          producto._id.toString(),
+            title:       producto.nombre,
             description: producto.descripcion || producto.nombre,
-            quantity: cantidad,
-            unit_price: Number(producto.precio),
+            quantity:    cantidad,
+            unit_price:  Number(producto.precio),
             currency_id: 'COP',
           },
         ],
@@ -153,23 +162,28 @@ export async function crearPreferencia(req, res) {
   }
 }
 
+// ─────────────────────────────────────────────
+// RECIBIR WEBHOOK
+// ─────────────────────────────────────────────
 export async function recibirWebhook(req, res) {
-  // Validar firma — en producción solo se loguea si falla, no se rechaza.
-  // La seguridad real viene de verificar el pago directamente contra la API de MP.
-  const isProduction = process.env.NODE_ENV === 'production'
-  if (isProduction) {
+  // ── Logs de diagnóstico — eliminar cuando confirmes que todo funciona ──
+  console.log('[MP DEBUG] query     :', JSON.stringify(req.query))
+  console.log('[MP DEBUG] x-signature :', req.headers['x-signature'])
+  console.log('[MP DEBUG] x-request-id:', req.headers['x-request-id'])
+  // ────────────────────────────────────────────────────────────────────────
+
+  // Validar firma HMAC solo en producción
+  if (process.env.NODE_ENV === 'production') {
     if (process.env.MP_WEBHOOK_SECRET) {
-      // Secret configurado: validar firma estrictamente
       if (!validateWebhookSignature(req)) {
         console.warn('[MP] Firma HMAC inválida. Rechazando webhook.')
         return res.status(401).json({ error: 'Firma de webhook inválida' })
       }
     } else {
-      // Sin secret: advertir pero procesar — la verificación contra la API de MP es el candado real
-      console.warn('[MP] ⚠️  MP_WEBHOOK_SECRET no configurado. Configúralo en producción para máxima seguridad.')
+      console.warn('[MP] ⚠️  MP_WEBHOOK_SECRET no configurado. Configúralo para mayor seguridad.')
     }
   } else {
-    console.log('[DEV] Validación HMAC omitida en desarrollo')
+    console.log('[DEV] Validación HMAC omitida en desarrollo.')
   }
 
   try {
@@ -184,36 +198,35 @@ export async function recibirWebhook(req, res) {
     const paymentApi = new Payment(client)
     const pago = await paymentApi.get({ id: paymentId })
 
-    console.log(`[MP] Webhook recibido - PaymentID: ${paymentId}, Status: ${pago.status}`)
+    console.log(`[MP] Webhook recibido — PaymentID: ${paymentId}, Status: ${pago.status}`)
 
     if (pago.status !== 'approved') {
-      console.log(`[MP] Pago no aprobado (status: ${pago.status}), ignorando webhook`)
+      console.log(`[MP] Pago no aprobado (status: ${pago.status}), ignorando.`)
       return res.sendStatus(200)
     }
 
-    // Extrae productId y cantidad de metadata
+    // Extraer productoId y cantidad de metadata
     const productoId = pago.metadata?.producto_id || pago.metadata?.productoId
-    const cantidad = Math.max(1, Number(pago.metadata?.cantidad) || 1)
+    const cantidad   = Math.max(1, Number(pago.metadata?.cantidad) || 1)
+
     if (!productoId) {
       console.error('[MP] No se encontró productoId en metadata del pago:', paymentId)
       return res.sendStatus(200)
     }
 
-    // Valida que producto existe
     const producto = await Producto.findById(productoId)
     if (!producto) {
       console.error('[MP] Producto no encontrado:', productoId)
       return res.sendStatus(200)
     }
 
-    // ===== PROCESAR ORDEN =====
-    // Primero verificar si el pago corresponde a una orden de WhatsApp existente
+    // ── ¿Existe una orden de WhatsApp vinculada a esta preferencia? ──
     const ordenExistente = pago.preference_id
       ? await Orden.findOne({ preferenceId: pago.preference_id })
       : null
 
     if (ordenExistente) {
-      // ── Flujo WhatsApp: actualizar la orden que ya existe ──
+      // ── Flujo WhatsApp: actualizar orden existente ──
       console.log(`[MP] Orden WhatsApp encontrada: ${ordenExistente.ordenNumero}`)
 
       await Orden.findByIdAndUpdate(ordenExistente._id, {
@@ -242,18 +255,22 @@ export async function recibirWebhook(req, res) {
           { _id: productoId, tipo: 'producto', stock: { $gte: cantidad } },
           { $inc: { stock: -cantidad } }
         )
+        console.log(`[MP] ✓ Stock decrementado: ${producto.nombre} (-${cantidad})`)
       }
 
       console.log(`[MP] ✓ Orden WhatsApp marcada como pagada: ${ordenExistente.ordenNumero}`)
+
     } else {
-      // ── Flujo Web: crear orden nueva (compra desde la tienda) ──
+      // ── Flujo Web: crear orden nueva ──
       console.log(`[MP] Creando orden Web para producto: ${producto.nombre}`)
 
+      // Datos del pagador (fallback si el formulario no los envió)
       const payerFirst = (pago.payer?.first_name || pago.additional_info?.payer?.first_name || '').trim()
       const payerLast  = (pago.payer?.last_name  || pago.additional_info?.payer?.last_name  || '').trim()
       const payerEmail = (pago.payer?.email || '').trim()
-      const payerPhone = pago.payer?.phone?.number ? String(pago.payer.phone.number) : ''
+      const payerPhone = pago.payer?.phone?.number ? String(pago.pager.phone.number) : ''
 
+      // MP convierte camelCase → snake_case en metadata
       const m = pago.metadata || {}
       const clienteNombre  = (m.cliente_nombre  || m.clienteNombre  || [payerFirst, payerLast].filter(Boolean).join(' ') || payerEmail.split('@')[0]).trim()
       const clienteCelular = (m.cliente_celular || m.clienteCelular || payerPhone).trim()
@@ -265,12 +282,16 @@ export async function recibirWebhook(req, res) {
       const envioTorre     = (m.envio_torre     || m.envioTorre     || '').trim()
       const envioApto      = (m.envio_apto      || m.envioApto      || '').trim()
 
+      console.log(`[MP] Cliente: nombre="${clienteNombre}" email="${emailComprador}" cel="${clienteCelular}"`)
+      console.log(`[MP] Envío: dir="${envioDireccion}" barrio="${envioBarrio}" unidad="${envioUnidad}" torre="${envioTorre}" apto="${envioApto}"`)
+
+      // Upsert de cliente
       const cliente = await Cliente.findOneAndUpdate(
         { email: emailComprador },
         {
           $set: {
             nombreEmpresa: clienteNombre,
-            whatsapp: clienteCelular,
+            whatsapp:      clienteCelular,
             ...(clienteCedula  && { cedulaNit:    clienteCedula }),
             ...(envioDireccion && { direccion:    envioDireccion }),
             ...(envioBarrio    && { ciudadBarrio: envioBarrio }),
@@ -280,6 +301,7 @@ export async function recibirWebhook(req, res) {
         },
         { upsert: true, new: true }
       )
+      console.log(`[MP] Cliente upsert: ${clienteNombre} <${emailComprador}>`)
 
       const ordenNumero = await generarNumeroOrden()
 
@@ -301,11 +323,11 @@ export async function recibirWebhook(req, res) {
         },
         productos: [
           {
-            productoId: producto._id,
+            productoId:     producto._id,
             productoNombre: producto.nombre,
             cantidad,
             precioUnitario: Number(pago.transaction_amount ?? 0) / cantidad,
-            precioTotal: Number(pago.transaction_amount ?? 0),
+            precioTotal:    Number(pago.transaction_amount ?? 0),
           },
         ],
         totalMonto:        Number(pago.transaction_amount ?? 0),
@@ -317,6 +339,8 @@ export async function recibirWebhook(req, res) {
         pagoId:            String(paymentId),
         preferenceId:      pago.preference_id || '',
       })
+
+      console.log(`[MP] ✓ Orden creada: ${ordenNumero}`)
 
       await Ticket.create({
         numeroTicket: `TK-${ordenNumero}`,
@@ -332,19 +356,23 @@ export async function recibirWebhook(req, res) {
         creador: 'sistema-mercadopago',
       })
 
+      console.log(`[MP] ✓ Ticket creado: TK-${ordenNumero}`)
+
+      // Decrementar stock de forma atómica
       if (producto.tipo === 'producto') {
         await Producto.findOneAndUpdate(
           { _id: productoId, tipo: 'producto', stock: { $gte: cantidad } },
           { $inc: { stock: -cantidad } }
         )
+        console.log(`[MP] ✓ Stock decrementado: ${producto.nombre} (-${cantidad})`)
       }
 
-      console.log(`[MP] ✓ Orden Web creada y pagada: ${ordenNumero}`)
+      console.log(`[MP] ✓ Orden Web procesada completamente: ${ordenNumero}`)
     }
   } catch (err) {
     console.error('[MP] Error procesando webhook:', err.message, err.stack)
   }
 
-  // Siempre retornar 200 a MercadoPago
+  // Siempre retornar 200 a MercadoPago para que no reintente
   res.sendStatus(200)
 }
