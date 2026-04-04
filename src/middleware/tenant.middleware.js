@@ -15,7 +15,15 @@ const tenantCache = new Map()
  */
 export async function tenantMiddleware(req, res, next) {
   try {
-    const hostname = req.hostname
+    // Usar el header Origin/Referer para obtener el dominio del FRONTEND,
+    // no req.hostname que devuelve el dominio del backend (ej. en Vercel)
+    let hostname = req.hostname
+    const origin = req.headers.origin || req.headers.referer || ""
+    if (origin) {
+      try {
+        hostname = new URL(origin).hostname
+      } catch { /* mantener req.hostname como fallback */ }
+    }
 
     let tenant = tenantCache.get(hostname)
 
