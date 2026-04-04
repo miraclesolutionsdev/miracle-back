@@ -99,4 +99,6 @@ ordenSchema.index({ estadoPago: 1, estadoPreparacion: 1, createdAt: -1 })
 ordenSchema.index({ estado: 1, createdAt: -1 })
 ordenSchema.index({ 'cliente.email': 1 })
 
-export default mongoose.model('Orden', ordenSchema)
+export function getOrdenModel(db) {
+  return db.models.Orden || db.model("Orden", ordenSchema)
+}

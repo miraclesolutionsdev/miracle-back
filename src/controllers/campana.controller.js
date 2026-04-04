@@ -1,4 +1,4 @@
-import Campana from "../models/campana.model.js"
+import { getCampanaModel } from "../models/campana.model.js"
 import mongoose from "mongoose"
 
 function toResponse(doc) {
@@ -19,6 +19,7 @@ function toResponse(doc) {
 export async function listar(req, res) {
   try {
     const { estado, limit = 500, skip = 0 } = req.query
+    const Campana = getCampanaModel(req.db)
     const filter = {}
     if (estado && ["borrador", "activa", "pausada", "finalizada"].includes(estado)) {
       filter.estado = estado
@@ -40,6 +41,7 @@ export async function obtenerUno(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de campaña no válido" })
     }
+    const Campana = getCampanaModel(req.db)
     const campana = await Campana.findById(id).lean()
     if (!campana) return res.status(404).json({ error: "Campaña no encontrada" })
     res.json(toResponse(campana))
@@ -51,6 +53,7 @@ export async function obtenerUno(req, res) {
 export async function crear(req, res) {
   try {
     const { nombre, producto, piezaCreativo, plataforma, miracleCoins, estado } = req.body
+    const Campana = getCampanaModel(req.db)
     const campana = await Campana.create({
       nombre: (nombre ?? "").trim(),
       producto: (producto ?? "").trim(),
@@ -81,6 +84,7 @@ export async function actualizar(req, res) {
     if (estado !== undefined && ["borrador", "activa", "pausada", "finalizada"].includes(estado)) {
       update.estado = estado
     }
+    const Campana = getCampanaModel(req.db)
     const campana = await Campana.findByIdAndUpdate(id, update, { new: true }).lean()
     if (!campana) return res.status(404).json({ error: "Campaña no encontrada" })
     res.json(toResponse(campana))
@@ -95,6 +99,7 @@ export async function eliminar(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de campaña no válido" })
     }
+    const Campana = getCampanaModel(req.db)
     const campana = await Campana.findByIdAndDelete(id)
     if (!campana) return res.status(404).json({ error: "Campaña no encontrada" })
     res.status(204).end()
@@ -113,6 +118,7 @@ export async function actualizarEstado(req, res) {
     if (!["borrador", "activa", "pausada", "finalizada"].includes(estado)) {
       return res.status(400).json({ error: "Estado no válido" })
     }
+    const Campana = getCampanaModel(req.db)
     const campana = await Campana.findByIdAndUpdate(id, { estado }, { new: true }).lean()
     if (!campana) return res.status(404).json({ error: "Campaña no encontrada" })
     res.json(toResponse(campana))

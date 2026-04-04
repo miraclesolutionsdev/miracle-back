@@ -1,4 +1,4 @@
-import Cliente from "../models/cliente.model.js"
+import { getClienteModel } from "../models/cliente.model.js"
 import mongoose from "mongoose"
 
 function toClienteResponse(doc) {
@@ -21,6 +21,7 @@ function toClienteResponse(doc) {
 export async function listarTodos(req, res) {
   try {
     const { estado, limit = 500, skip = 0 } = req.query
+    const Cliente = getClienteModel(req.db)
     const filter = {}
     if (estado) filter.estado = estado
     const clientes = await Cliente.find(filter)
@@ -40,6 +41,7 @@ export async function obtenerUno(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de cliente no válido" })
     }
+    const Cliente = getClienteModel(req.db)
     const cliente = await Cliente.findById(id)
     if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" })
     res.json(toClienteResponse(cliente))
@@ -54,6 +56,7 @@ export async function crear(req, res) {
     if (!nombreEmpresa || !email) {
       return res.status(400).json({ error: "Faltan campos requeridos: nombreEmpresa, email" })
     }
+    const Cliente = getClienteModel(req.db)
     const cliente = await Cliente.create({
       nombreEmpresa,
       cedulaNit: cedulaNit ?? "",
@@ -84,11 +87,9 @@ export async function actualizar(req, res) {
     if (whatsapp !== undefined) update.whatsapp = whatsapp
     if (direccion !== undefined) update.direccion = direccion
     if (ciudadBarrio !== undefined) update.ciudadBarrio = ciudadBarrio
-    if (estado !== undefined) {
-      if (["activo", "pausado", "inactivo"].includes(estado)) update.estado = estado
-    }
+    if (estado !== undefined && ["activo", "pausado", "inactivo"].includes(estado)) update.estado = estado
     if (miracleCoins !== undefined) update.miracleCoins = Math.max(0, Number(miracleCoins) || 0)
-
+    const Cliente = getClienteModel(req.db)
     const cliente = await Cliente.findByIdAndUpdate(id, update, { new: true })
     if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" })
     res.json(toClienteResponse(cliente))

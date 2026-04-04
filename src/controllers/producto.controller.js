@@ -1,4 +1,4 @@
-import Producto from "../models/producto.model.js"
+import { getProductoModel } from "../models/producto.model.js"
 import mongoose from "mongoose"
 import { subirImagenEvitandoDuplicado, eliminarImagenPorUrl } from "../services/s3.service.js"
 
@@ -53,6 +53,7 @@ function parseJsonArray(val) {
 export async function listarTodos(req, res) {
   try {
     const { estado, tipo, limit = 500, skip = 0 } = req.query
+    const Producto = getProductoModel(req.db)
     const filter = {}
     if (estado) filter.estado = estado
     if (tipo) filter.tipo = tipo
@@ -73,6 +74,7 @@ export async function obtenerUno(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
+    const Producto = getProductoModel(req.db)
     const producto = await Producto.findById(id)
     if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
     res.json(toProductoResponse(producto))
@@ -89,11 +91,10 @@ export async function crear(req, res) {
       return res.status(400).json({ error: "Faltan campos requeridos: nombre" })
     }
     const nom = (nombre || "").trim()
+    const Producto = getProductoModel(req.db)
     const existente = await Producto.findOne({ nombre: nom })
     if (existente) {
-      return res.status(409).json({
-        error: "Ya existe un producto o servicio con ese nombre.",
-      })
+      return res.status(409).json({ error: "Ya existe un producto o servicio con ese nombre." })
     }
     let imagenes = []
     if (req.body.imagenes && Array.isArray(req.body.imagenes) && files.length === 0) {
@@ -118,9 +119,7 @@ export async function crear(req, res) {
       const urlsSubidas = []
       for (const f of files) {
         const url = await subirImagenEvitandoDuplicado(
-          f.buffer,
-          f.mimetype || "image/jpeg",
-          f.originalname || "imagen.jpg"
+          f.buffer, f.mimetype || "image/jpeg", f.originalname || "imagen.jpg"
         )
         urlsSubidas.push({ url, contentType: f.mimetype || "image/jpeg" })
       }
@@ -142,19 +141,14 @@ export async function actualizar(req, res) {
     const { nombre, descripcion, precio, tipo, estado, stock, whatsapp, usos, caracteristicas } = req.body
     const files = req.files || []
     const update = {}
+    const Producto = getProductoModel(req.db)
     if (nombre !== undefined) update.nombre = (nombre || "").trim()
     if (descripcion !== undefined) update.descripcion = descripcion
     if (whatsapp !== undefined) update.whatsapp = (whatsapp ?? "").trim()
-
     if (update.nombre !== undefined) {
-      const otro = await Producto.findOne({
-        nombre: update.nombre,
-        _id: { $ne: id },
-      })
+      const otro = await Producto.findOne({ nombre: update.nombre, _id: { $ne: id } })
       if (otro) {
-        return res.status(409).json({
-          error: "Ya existe un producto o servicio con ese nombre.",
-        })
+        return res.status(409).json({ error: "Ya existe un producto o servicio con ese nombre." })
       }
     }
     if (precio !== undefined) update.precio = parsePrecio(precio)
@@ -168,9 +162,7 @@ export async function actualizar(req, res) {
       const nuevasUrls = []
       for (const f of files) {
         const url = await subirImagenEvitandoDuplicado(
-          f.buffer,
-          f.mimetype || "image/jpeg",
-          f.originalname || "imagen.jpg"
+          f.buffer, f.mimetype || "image/jpeg", f.originalname || "imagen.jpg"
         )
         nuevasUrls.push({ url, contentType: f.mimetype || "image/jpeg" })
       }
@@ -184,7 +176,6 @@ export async function actualizar(req, res) {
     if (stock !== undefined) update.stock = Math.max(0, Number(stock) || 0)
     if (usos !== undefined) update.usos = parseJsonArray(usos)
     if (caracteristicas !== undefined) update.caracteristicas = parseJsonArray(caracteristicas)
-
     const producto = await Producto.findByIdAndUpdate(id, update, { new: true })
     if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
     res.json(toProductoResponse(producto))
@@ -199,6 +190,7 @@ export async function inactivar(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
+    const Producto = getProductoModel(req.db)
     const producto = await Producto.findByIdAndUpdate(id, { estado: "inactivo" }, { new: true })
     if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
     res.json(toProductoResponse(producto))
@@ -213,6 +205,7 @@ export async function obtenerImagen(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
+    const Producto = getProductoModel(req.db)
     const producto = await Producto.findById(id).select("imagenes")
     if (!producto) return res.status(404).json({ error: "Imagen no encontrada" })
     const i = parseInt(index, 10)
@@ -239,6 +232,7 @@ export async function eliminarImagen(req, res) {
     if (Number.isNaN(i) || i < 0) {
       return res.status(400).json({ error: "Índice de imagen no válido" })
     }
+    const Producto = getProductoModel(req.db)
     const producto = await Producto.findById(id)
     if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
     if (!Array.isArray(producto.imagenes) || !producto.imagenes[i]) {
@@ -246,9 +240,7 @@ export async function eliminarImagen(req, res) {
     }
     const imagenAEliminar = producto.imagenes[i]
     if (imagenAEliminar?.url) {
-      try {
-        await eliminarImagenPorUrl(imagenAEliminar.url)
-      } catch (err) {
+      try { await eliminarImagenPorUrl(imagenAEliminar.url) } catch (err) {
         console.error(`Error al eliminar archivo de S3: ${err.message}`)
       }
     }

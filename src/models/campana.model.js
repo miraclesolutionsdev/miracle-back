@@ -16,4 +16,6 @@ const campanaSchema = new mongoose.Schema(
   { timestamps: true, collection: "campanas" }
 )
 
-export default mongoose.model("Campana", campanaSchema)
+export function getCampanaModel(db) {
+  return db.models.Campana || db.model("Campana", campanaSchema)
+}

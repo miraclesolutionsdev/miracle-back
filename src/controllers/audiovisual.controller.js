@@ -1,4 +1,4 @@
-import PiezaAudiovisual from "../models/piezaAudiovisual.model.js"
+import { getPiezaAudiovisualModel } from "../models/piezaAudiovisual.model.js"
 import mongoose from "mongoose"
 import {
   subirArchivoAudiovisualEvitandoDuplicado,
@@ -24,6 +24,7 @@ function toResponse(doc) {
 export async function listar(req, res) {
   try {
     const { estado, tipo } = req.query
+    const PiezaAudiovisual = getPiezaAudiovisualModel(req.db)
     const filter = {}
     if (estado) filter.estado = estado
     if (tipo) filter.tipo = tipo
@@ -38,25 +39,20 @@ export async function crear(req, res) {
   try {
     const { tipo, plataforma, resolucion, duracion, campanaAsociada } = req.body
     const file = req.file
-
     if (!tipo || !plataforma) {
       return res.status(400).json({ error: "Faltan campos: tipo, plataforma" })
     }
     if (!file?.buffer) {
       return res.status(400).json({ error: "Debe adjuntar un archivo (video o imagen)" })
     }
-
     const formato =
       tipo === "Video" && resolucion && duracion
         ? `${resolucion} · ${duracion}`
         : resolucion ?? ""
-
     const url = await subirArchivoAudiovisualEvitandoDuplicado(
-      file.buffer,
-      file.mimetype,
-      file.originalname || "archivo"
+      file.buffer, file.mimetype, file.originalname || "archivo"
     )
-
+    const PiezaAudiovisual = getPiezaAudiovisualModel(req.db)
     const pieza = await PiezaAudiovisual.create({
       tipo: tipo === "Imagen" ? "Imagen" : "Video",
       plataforma: (plataforma || "").trim(),
@@ -66,7 +62,6 @@ export async function crear(req, res) {
       url,
       contentType: file.mimetype || "application/octet-stream",
     })
-
     res.status(201).json(toResponse(pieza))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -94,12 +89,11 @@ export async function confirmarSubida(req, res) {
     if (!publicUrl && !key) {
       return res.status(400).json({ error: "Falta publicUrl o key del archivo en S3" })
     }
-
     const formato =
       tipo === "Video" && resolucion && (duracion != null && duracion !== "")
         ? `${resolucion} · ${duracion}s`
         : (resolucion || "").trim()
-
+    const PiezaAudiovisual = getPiezaAudiovisualModel(req.db)
     const pieza = await PiezaAudiovisual.create({
       tipo: tipo === "Imagen" ? "Imagen" : "Video",
       plataforma: (plataforma || "").trim(),
@@ -109,7 +103,6 @@ export async function confirmarSubida(req, res) {
       url: (publicUrl || "").trim() || key,
       contentType: (contentType || "").trim() || "application/octet-stream",
     })
-
     res.status(201).json(toResponse(pieza))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -120,14 +113,13 @@ export async function actualizarEstado(req, res) {
   try {
     const { id } = req.params
     const { estado } = req.body
-
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID no válido" })
     }
     if (!["pendiente", "aprobada", "usada"].includes(estado)) {
       return res.status(400).json({ error: "Estado no válido" })
     }
-
+    const PiezaAudiovisual = getPiezaAudiovisualModel(req.db)
     const pieza = await PiezaAudiovisual.findByIdAndUpdate(id, { estado }, { new: true }).lean()
     if (!pieza) return res.status(404).json({ error: "Pieza no encontrada" })
     res.json(toResponse(pieza))

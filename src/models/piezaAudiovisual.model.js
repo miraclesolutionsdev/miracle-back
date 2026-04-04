@@ -21,4 +21,6 @@ const piezaAudiovisualSchema = new mongoose.Schema(
   { timestamps: true, collection: "audiovisuales" }
 )
 
-export default mongoose.model("PiezaAudiovisual", piezaAudiovisualSchema)
+export function getPiezaAudiovisualModel(db) {
+  return db.models.PiezaAudiovisual || db.model("PiezaAudiovisual", piezaAudiovisualSchema)
+}

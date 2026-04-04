@@ -14,4 +14,6 @@ const contadorSchema = new mongoose.Schema(
   { timestamps: false, _id: false }
 )
 
-export default mongoose.model('Contador', contadorSchema)
+export function getContadorModel(db) {
+  return db.models.Contador || db.model("Contador", contadorSchema)
+}

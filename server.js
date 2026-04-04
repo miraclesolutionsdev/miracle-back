@@ -12,7 +12,9 @@ import express from "express"
 import cookieParser from "cookie-parser"
 import helmet from "helmet"
 import rateLimit from "express-rate-limit"
-import { conectarDB } from "./src/config/db.js"
+import { getRegistryDb } from "./src/config/connectionManager.js"
+import { getTenantModel } from "./src/models/tenant.model.js"
+import { tenantMiddleware } from "./src/middleware/tenant.middleware.js"
 import clienteRoutes from "./src/routes/cliente.routes.js"
 import productoRoutes from "./src/routes/producto.routes.js"
 import audiovisualRoutes from "./src/routes/audiovisual.routes.js"
@@ -23,33 +25,44 @@ import iaRoutes from "./src/routes/ia.routes.js"
 import pagoRoutes from "./src/routes/pago.routes.js"
 import ordenRoutes from "./src/routes/orden.routes.js"
 import whatsappRoutes from "./src/routes/whatsapp.routes.js"
+import registerRoutes from "./src/routes/register.routes.js"
 
 const app = express()
 
-// Vercel corre detrás de un proxy - necesario para rate-limit y cookies
 app.set("trust proxy", 1)
 
-const ALLOWED_ORIGINS = [
-  "https://miracle-front-jade.vercel.app",
-  "https://www.miraclesolutions.com.co",
-  "https://miraclesolutions.com.co",
+// CORS dinámico: permite todos los dominios registrados en tenantregistrydb + los fijos
+const STATIC_ORIGINS = [
   "http://localhost:5173",
   "http://localhost:3000",
 ]
 
-// CORS manual - antes de todo para que cada respuesta (incluyendo errores) lleve los headers
-app.use((req, res, next) => {
+async function getAllowedOrigins() {
+  try {
+    const db = await getRegistryDb()
+    const Tenant = getTenantModel(db)
+    const tenants = await Tenant.find({}).select("dominios slug").lean()
+    const dynamicOrigins = tenants.flatMap((t) => [
+      ...t.dominios.flatMap((d) => [`https://${d}`, `https://www.${d}`]),
+    ])
+    return [...STATIC_ORIGINS, ...dynamicOrigins]
+  } catch {
+    return STATIC_ORIGINS
+  }
+}
+
+app.use(async (req, res, next) => {
   const origin = req.headers.origin
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+  if (!origin) return next()
+  const allowedOrigins = await getAllowedOrigins()
+  if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin)
     res.setHeader("Access-Control-Allow-Credentials", "true")
     res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS")
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key")
     res.setHeader("Vary", "Origin")
   }
-  if (req.method === "OPTIONS") {
-    return res.status(200).end()
-  }
+  if (req.method === "OPTIONS") return res.status(200).end()
   next()
 })
 
@@ -57,7 +70,7 @@ app.use(helmet({ crossOriginResourcePolicy: false, contentSecurityPolicy: false 
 app.use(cookieParser())
 app.use(express.json({ limit: "10mb" }))
 
-// Rate limit global: 300 req/15 min por IP (protege todos los endpoints)
+// Rate limit global
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
@@ -68,51 +81,26 @@ const globalLimiter = rateLimit({
 })
 app.use(globalLimiter)
 
-// Asegurar conexión a MongoDB antes de rutas que usan la DB
-app.use(async (req, res, next) => {
-  if (req.path === "/" || req.path === "/favicon.ico") return next()
-  try {
-    await conectarDB()
-    next()
-  } catch (err) {
-    res.status(503).json({ error: "No se pudo conectar a la base de datos" })
-  }
-})
+// Ruta de registro — NO necesita tenantMiddleware (crea el tenant)
+app.use("/register", registerRoutes)
 
 // Ruta raíz
-app.get("/", (_req, res) => {
-  res.send("🚀 Backend Express funcionando")
-})
+app.get("/", (_req, res) => res.send("🚀 Backend Express funcionando"))
 
-// Auth & usuarios
+// Todas las demás rutas resuelven el tenant por hostname
+app.use(tenantMiddleware)
+
 app.use("/auth", authRoutes)
 app.use("/users", userRoutes)
-
-// CRUD Clientes
 app.use("/clientes", clienteRoutes)
-
-// CRUD Productos
 app.use("/productos", productoRoutes)
-
-// Audiovisual
 app.use("/audiovisual", audiovisualRoutes)
-
-// Campañas
 app.use("/campanas", campanaRoutes)
-
-// IA (copys, ángulos, etc.)
 app.use("/ia", iaRoutes)
-
-// Pagos (MercadoPago)
 app.use("/pagos", pagoRoutes)
-
-// Órdenes
 app.use("/ordenes", ordenRoutes)
-
-// WhatsApp (tool de ElevenLabs)
 app.use("/whatsapp", whatsappRoutes)
 
-// Puerto - solo para desarrollo local (Vercel usa serverless)
 const PORT = process.env.PORT || 3000
 
 if (process.env.VERCEL !== "1") {

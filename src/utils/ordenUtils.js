@@ -1,16 +1,14 @@
-import Contador from '../models/contador.model.js'
+import { getContadorModel } from '../models/contador.model.js'
 
 /**
  * Genera un número de orden único con formato YYYYMMDD-XXX
  * Ejemplo: 20250325-001, 20250325-002
- *
- * Usa colección Contador para mantener secuencia diaria.
- * Cada día reinicia la numeración.
+ * Recibe la conexión db del tenant activo.
  */
-export async function generarNumeroOrden() {
+export async function generarNumeroOrden(db) {
   const hoy = new Date()
   const fechaStr = hoy.toISOString().split('T')[0].replace(/-/g, '') // YYYYMMDD
-
+  const Contador = getContadorModel(db)
   try {
     const contador = await Contador.findByIdAndUpdate(
       'ordenNumero',
@@ -21,8 +19,8 @@ export async function generarNumeroOrden() {
             contador: {
               $cond: [
                 { $eq: ['$fecha', fechaStr] },
-                { $add: ['$contador', 1] }, // Mismo día: incrementar
-                1, // Nuevo día: reiniciar
+                { $add: ['$contador', 1] },
+                1,
               ],
             },
           },
@@ -30,7 +28,6 @@ export async function generarNumeroOrden() {
       ],
       { upsert: true, new: true, updatePipeline: true }
     )
-
     const numeroFormateado = String(contador.contador).padStart(3, '0')
     return `${fechaStr}-${numeroFormateado}`
   } catch (err) {
@@ -40,84 +37,56 @@ export async function generarNumeroOrden() {
 }
 
 /**
- * Valida transiciones de estado permitidas en una Orden
- * Máquina de estados:
- *   pendiente → procesando | cancelada
- *   procesando → completada | cancelada
- *   completada → entregada | cancelada
- *   entregada → (solo lectura, sin transiciones)
- *   cancelada → (solo lectura, sin transiciones)
+ * Valida transiciones de estado permitidas en una Orden.
  */
 export function esTransicionValida(estadoActual, estadoNuevo) {
   const transicionesPermitidas = {
-    pendiente: ['procesando', 'cancelada'],
+    pendiente:  ['procesando', 'cancelada'],
     procesando: ['completada', 'cancelada'],
     completada: ['entregada', 'cancelada'],
-    entregada: [], // Terminal
-    cancelada: [], // Terminal
+    entregada:  [],
+    cancelada:  [],
   }
-
   if (!transicionesPermitidas[estadoActual]) {
     console.warn(`[esTransicionValida] Estado actual inválido: ${estadoActual}`)
     return false
   }
-
-  const permitidas = transicionesPermitidas[estadoActual]
-  return permitidas.includes(estadoNuevo)
+  return transicionesPermitidas[estadoActual].includes(estadoNuevo)
 }
 
 /**
- * Calcula totales de una orden a partir de su array de productos
- * Cada producto debe tener: cantidad, precioUnitario
+ * Calcula totales de una orden a partir de su array de productos.
  */
 export function calcularTotalesOrden(productos = []) {
   if (!Array.isArray(productos) || productos.length === 0) {
-    return {
-      totalMonto: 0,
-      productosCalculados: [],
-    }
+    return { totalMonto: 0, productosCalculados: [] }
   }
-
   let totalMonto = 0
   const productosCalculados = productos.map((prod) => {
     const cantidad = Number(prod.cantidad) || 1
     const precioUnitario = Number(prod.precioUnitario) || 0
     const precioTotal = cantidad * precioUnitario
-
     totalMonto += precioTotal
-
-    return {
-      ...prod,
-      cantidad,
-      precioUnitario,
-      precioTotal,
-    }
+    return { ...prod, cantidad, precioUnitario, precioTotal }
   })
-
-  return {
-    totalMonto,
-    productosCalculados,
-  }
+  return { totalMonto, productosCalculados }
 }
 
-/**
- * Mapeos auxiliares para UI (colores, estilos)
- */
 export const estadoOrdenStyleMap = {
-  pendiente: { color: '#FFC107', label: 'Pendiente' },
+  pendiente:  { color: '#FFC107', label: 'Pendiente' },
   procesando: { color: '#2196F3', label: 'Procesando' },
   completada: { color: '#4CAF50', label: 'Completada' },
-  entregada: { color: '#558B2F', label: 'Entregada' },
-  cancelada: { color: '#F44336', label: 'Cancelada' },
+  entregada:  { color: '#558B2F', label: 'Entregada' },
+  cancelada:  { color: '#F44336', label: 'Cancelada' },
 }
 
 export const tipoTicketIconMap = {
-  creacion: '📋',
-  pago_recibido: '✅',
-  procesamiento_inicio: '⏱️',
-  envio: '📦',
-  entrega: '🎁',
-  problema: '⚠️',
-  cancelacion: '❌',
-  actualización: '🔄',
+  creacion:              '📋',
+  pago_recibido:         '✅',
+  procesamiento_inicio:  '⏱️',
+  envio:                 '📦',
+  entrega:               '🎁',
+  problema:              '⚠️',
+  cancelacion:           '❌',
+  actualización:         '🔄',
 }

@@ -52,4 +52,6 @@ const ticketSchema = new mongoose.Schema(
 ticketSchema.index({ ordenId: 1, createdAt: -1 })
 ticketSchema.index({ createdAt: -1 })
 
-export default mongoose.model('Ticket', ticketSchema)
+export function getTicketModel(db) {
+  return db.models.Ticket || db.model("Ticket", ticketSchema)
+}
