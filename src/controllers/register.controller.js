@@ -18,10 +18,20 @@ function generarSlug(nombre) {
 
 export async function registrarTenant(req, res) {
   try {
-    const { nombreTienda, email, password, nombre } = req.body
+    const { nombreTienda, email, password, nombre, dominio } = req.body
 
     if (!nombreTienda?.trim() || !email?.trim() || !password) {
       return res.status(400).json({ error: "nombreTienda, email y password son obligatorios" })
+    }
+
+    // Validar y limpiar dominio propio si viene
+    let dominioCustom = null
+    if (dominio?.trim()) {
+      dominioCustom = dominio.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "")
+      // Validación básica de formato
+      if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(dominioCustom)) {
+        return res.status(400).json({ error: "El dominio ingresado no es válido. Ej: venompharmacol.com" })
+      }
     }
     if (password.length < 8) {
       return res.status(400).json({ error: "La contraseña debe tener al menos 8 caracteres" })
@@ -46,12 +56,16 @@ export async function registrarTenant(req, res) {
     const dbName = `${slug}db`
     const mainDomain = process.env.MAIN_DOMAIN || "miraclesolutions.com.co"
 
-    // Crear el entry en el registry con subdominio propio
+    // Si tiene dominio propio, usarlo. Si no, generar subdominio automático.
+    const dominios = dominioCustom
+      ? [dominioCustom, `www.${dominioCustom}`]
+      : [`${slug}.${mainDomain}`, `www.${slug}.${mainDomain}`]
+
     await Tenant.create({
       slug,
       dbName,
       nombre: nombreTienda.trim(),
-      dominios: [`${slug}.${mainDomain}`, `www.${slug}.${mainDomain}`],
+      dominios,
     })
 
     // Conectar al nuevo DB y crear el primer usuario
@@ -96,7 +110,7 @@ export async function registrarTenant(req, res) {
         slug,
         dbName,
         nombre: nombreTienda.trim(),
-        accessUrl: `https://${slug}.${mainDomain}`,
+        accessUrl: `https://${dominios[0]}`,
       },
     })
   } catch (error) {
