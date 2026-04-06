@@ -63,6 +63,7 @@ export async function login(req, res) {
         email: user.email,
         nombre: user.nombre,
         isOriginalAdmin: isOriginal,
+        tenantNombre: req.tenantNombre,
       },
     })
   } catch (error) {
@@ -99,6 +100,7 @@ export async function obtenerPerfil(req, res) {
         email: user.email,
         nombre: user.nombre ?? "",
         isOriginalAdmin: isOriginal,
+        tenantNombre: req.tenantNombre,
       },
     })
   } catch (error) {

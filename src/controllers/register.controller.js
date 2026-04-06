@@ -105,6 +105,7 @@ export async function registrarTenant(req, res) {
         email: user.email,
         nombre: user.nombre,
         isOriginalAdmin: true,
+        tenantNombre: nombreTienda.trim(),
       },
       tenant: {
         slug,

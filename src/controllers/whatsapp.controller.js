@@ -122,10 +122,11 @@ function elHeaders() {
 }
 
 export async function listarConversaciones(req, res) {
-  const agentId = (process.env.ELEVENLABS_AGENT_ID || '').trim()
-  const apiKey  = (process.env.ELEVENLABS_API_KEY  || '').trim()
+  // Usar el agentId propio del tenant; si no tiene, retornar vacío
+  const agentId = (req.elevenLabsAgentId || '').trim()
+  const apiKey  = (process.env.ELEVENLABS_API_KEY || '').trim()
   if (!agentId || !apiKey) {
-    return res.status(503).json({ error: 'Faltan ELEVENLABS_API_KEY o ELEVENLABS_AGENT_ID en las variables de entorno.' })
+    return res.json({ conversations: [], has_more: false, next_cursor: null })
   }
   try {
     const { page_size = 50, cursor } = req.query

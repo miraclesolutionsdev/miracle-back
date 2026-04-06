@@ -66,6 +66,8 @@ export async function tenantMiddleware(req, res, next) {
     req.db = await getDb(tenant.dbName)
     req.tenantSlug = tenant.slug
     req.tenantDbName = tenant.dbName
+    req.tenantNombre = tenant.nombre
+    req.elevenLabsAgentId = tenant.elevenLabsAgentId || null
     next()
   } catch (err) {
     console.error("[Tenant]", err.message)
