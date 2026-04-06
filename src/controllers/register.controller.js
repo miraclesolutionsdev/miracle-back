@@ -44,13 +44,14 @@ export async function registrarTenant(req, res) {
     }
 
     const dbName = `${slug}db`
+    const mainDomain = process.env.MAIN_DOMAIN || "miraclesolutions.com.co"
 
-    // Crear el entry en el registry
+    // Crear el entry en el registry con subdominio propio
     await Tenant.create({
       slug,
       dbName,
       nombre: nombreTienda.trim(),
-      dominios: [],
+      dominios: [`${slug}.${mainDomain}`, `www.${slug}.${mainDomain}`],
     })
 
     // Conectar al nuevo DB y crear el primer usuario
@@ -91,7 +92,12 @@ export async function registrarTenant(req, res) {
         nombre: user.nombre,
         isOriginalAdmin: true,
       },
-      tenant: { slug, dbName, nombre: nombreTienda.trim() },
+      tenant: {
+        slug,
+        dbName,
+        nombre: nombreTienda.trim(),
+        accessUrl: `https://${slug}.${mainDomain}`,
+      },
     })
   } catch (error) {
     console.error("[Register]", error.message)

@@ -16,6 +16,9 @@ export async function requireAuth(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET)
+    if (!decoded.userId) {
+      return res.status(401).json({ error: "Token malformado." })
+    }
     req.userId = decoded.userId
     return next()
   } catch {

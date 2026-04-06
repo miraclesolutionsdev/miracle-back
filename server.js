@@ -37,17 +37,26 @@ const STATIC_ORIGINS = [
   "http://localhost:3000",
 ]
 
+let _originsCache = null
+let _originsCacheTs = 0
+const ORIGINS_TTL = 30_000 // 30 segundos
+
 async function getAllowedOrigins() {
+  const now = Date.now()
+  if (_originsCache && now - _originsCacheTs < ORIGINS_TTL) return _originsCache
   try {
     const db = await getRegistryDb()
     const Tenant = getTenantModel(db)
-    const tenants = await Tenant.find({}).select("dominios slug").lean()
-    const dynamicOrigins = tenants.flatMap((t) => [
-      ...t.dominios.flatMap((d) => [`https://${d}`, `https://www.${d}`]),
-    ])
-    return [...STATIC_ORIGINS, ...dynamicOrigins]
+    const tenants = await Tenant.find({}).select("dominios").lean()
+    // dominios[] ya incluye www.xxx si aplica — no duplicar con www.${d}
+    const dynamicOrigins = tenants.flatMap((t) =>
+      t.dominios.map((d) => `https://${d}`)
+    )
+    _originsCache = [...STATIC_ORIGINS, ...dynamicOrigins]
+    _originsCacheTs = now
+    return _originsCache
   } catch {
-    return STATIC_ORIGINS
+    return _originsCache ?? STATIC_ORIGINS
   }
 }
 

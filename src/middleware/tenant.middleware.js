@@ -1,8 +1,19 @@
 import { getDb, getRegistryDb } from "../config/connectionManager.js"
 import { getTenantModel } from "../models/tenant.model.js"
 
-// Cache hostname → tenant doc para evitar queries repetidas al registry
+// Cache hostname → { tenant, ts } con TTL de 5 minutos
 const tenantCache = new Map()
+const TENANT_CACHE_TTL = 5 * 60 * 1000
+
+function getCached(hostname) {
+  const entry = tenantCache.get(hostname)
+  if (!entry) return null
+  if (Date.now() - entry.ts > TENANT_CACHE_TTL) {
+    tenantCache.delete(hostname)
+    return null
+  }
+  return entry.tenant
+}
 
 /**
  * Resuelve el tenant a partir del hostname de la petición.
@@ -25,7 +36,7 @@ export async function tenantMiddleware(req, res, next) {
       } catch { /* mantener req.hostname como fallback */ }
     }
 
-    let tenant = tenantCache.get(hostname)
+    let tenant = getCached(hostname)
 
     if (!tenant) {
       const registryDb = await getRegistryDb()
@@ -45,7 +56,7 @@ export async function tenantMiddleware(req, res, next) {
         }
       }
 
-      if (tenant) tenantCache.set(hostname, tenant)
+      if (tenant) tenantCache.set(hostname, { tenant, ts: Date.now() })
     }
 
     if (!tenant) {

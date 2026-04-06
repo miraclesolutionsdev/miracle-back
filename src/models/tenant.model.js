@@ -17,6 +17,8 @@ const tenantSchema = new mongoose.Schema(
   { timestamps: true, collection: "tenants" }
 )
 
+tenantSchema.index({ dominios: 1 })
+
 export function getTenantModel(db) {
   return db.models.Tenant || db.model("Tenant", tenantSchema)
 }
