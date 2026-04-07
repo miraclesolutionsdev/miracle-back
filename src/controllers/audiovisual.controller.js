@@ -4,6 +4,7 @@ import {
   subirArchivoAudiovisualEvitandoDuplicado,
   obtenerPresignedPutAudiovisual,
 } from "../services/s3.service.js"
+import { crearYEmitir } from "./notification.controller.js"
 
 function toResponse(doc) {
   if (!doc) return null
@@ -62,6 +63,12 @@ export async function crear(req, res) {
       url,
       contentType: file.mimetype || "application/octet-stream",
     })
+    crearYEmitir(req.db, req.tenantDbName, {
+      tipo: 'audiovisual_subido',
+      titulo: `${pieza.tipo} subido`,
+      mensaje: `Nueva pieza ${pieza.tipo.toLowerCase()} para ${pieza.plataforma}${pieza.campanaAsociada ? ` · ${pieza.campanaAsociada}` : ''}`,
+      meta: { id: pieza._id.toString(), tipo: pieza.tipo, plataforma: pieza.plataforma },
+    })
     res.status(201).json(toResponse(pieza))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -103,6 +110,12 @@ export async function confirmarSubida(req, res) {
       url: (publicUrl || "").trim() || key,
       contentType: (contentType || "").trim() || "application/octet-stream",
     })
+    crearYEmitir(req.db, req.tenantDbName, {
+      tipo: 'audiovisual_subido',
+      titulo: `${pieza.tipo} subido`,
+      mensaje: `Nueva pieza ${pieza.tipo.toLowerCase()} para ${pieza.plataforma}${pieza.campanaAsociada ? ` · ${pieza.campanaAsociada}` : ''}`,
+      meta: { id: pieza._id.toString(), tipo: pieza.tipo, plataforma: pieza.plataforma },
+    })
     res.status(201).json(toResponse(pieza))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -122,6 +135,13 @@ export async function actualizarEstado(req, res) {
     const PiezaAudiovisual = getPiezaAudiovisualModel(req.db)
     const pieza = await PiezaAudiovisual.findByIdAndUpdate(id, { estado }, { new: true }).lean()
     if (!pieza) return res.status(404).json({ error: "Pieza no encontrada" })
+    const estadoLabel = { aprobada: 'aprobada', usada: 'marcada como usada', pendiente: 'marcada como pendiente' }
+    crearYEmitir(req.db, req.tenantDbName, {
+      tipo: 'audiovisual_estado',
+      titulo: 'Pieza audiovisual actualizada',
+      mensaje: `Pieza de ${pieza.plataforma} ${estadoLabel[estado] || estado}`,
+      meta: { id: id, estado, plataforma: pieza.plataforma },
+    })
     res.json(toResponse(pieza))
   } catch (error) {
     res.status(500).json({ error: error.message })

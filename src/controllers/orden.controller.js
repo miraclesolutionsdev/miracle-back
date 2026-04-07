@@ -7,6 +7,7 @@ import {
   esTransicionValida,
   calcularTotalesOrden,
 } from '../utils/ordenUtils.js'
+import { crearYEmitir } from './notification.controller.js'
 
 export async function listarOrdenes(req, res) {
   try {
@@ -148,6 +149,12 @@ export async function crearOrden(req, res) {
       descripcion: `Orden creada manualmente con ${productos.length} producto(s)`,
       creador: 'manual',
     })
+    crearYEmitir(req.db, req.tenantDbName, {
+      tipo: 'orden_creada',
+      titulo: 'Nueva orden de venta',
+      mensaje: `Orden ${nuevaOrden.ordenNumero} de ${nuevaOrden.cliente.nombre} · $${total.toLocaleString('es-CO')}`,
+      meta: { id: nuevaOrden._id.toString(), ordenNumero: nuevaOrden.ordenNumero, total, cliente: nuevaOrden.cliente.nombre },
+    })
     res.status(201).json({ orden: nuevaOrden.toObject(), ticket })
   } catch (err) {
     console.error('[Ordenes] Error creando:', err.message)
@@ -184,6 +191,13 @@ export async function actualizarEstadoOrden(req, res) {
       cambios: { campo: 'estado', valorAnterior: estadoAnterior, valorNuevo: nuevoEstado },
       creador: 'sistema',
     })
+    const estadoLabel = { procesando: 'en proceso', enviada: 'enviada', entregada: 'entregada', cancelada: 'cancelada' }
+    crearYEmitir(req.db, req.tenantDbName, {
+      tipo: 'orden_estado',
+      titulo: 'Estado de orden actualizado',
+      mensaje: `Orden ${orden.ordenNumero} marcada como ${estadoLabel[nuevoEstado] || nuevoEstado}`,
+      meta: { id: id, ordenNumero: orden.ordenNumero, estado: nuevoEstado },
+    })
     res.json({ orden: orden.toObject(), ticket })
   } catch (err) {
     console.error('[Ordenes] Error actualizando estado:', err.message)
@@ -209,6 +223,12 @@ export async function crearTicketManual(req, res) {
       descripcion,
       cambios,
       creador: 'manual',
+    })
+    crearYEmitir(req.db, req.tenantDbName, {
+      tipo: 'ticket_creado',
+      titulo: 'Nuevo ticket en orden',
+      mensaje: `${ticket.numeroTicket}: ${descripcion.length > 70 ? descripcion.slice(0, 70) + '…' : descripcion}`,
+      meta: { id: id, ordenNumero: orden.ordenNumero, ticket: ticket.numeroTicket },
     })
     res.status(201).json(ticket)
   } catch (err) {
@@ -262,6 +282,14 @@ export async function actualizarPago(req, res) {
       cambios: { campo: 'estadoPago', valorNuevo: estadoPago },
       creador: 'sistema',
     })
+    if (estadoPago === 'pagado') {
+      crearYEmitir(req.db, req.tenantDbName, {
+        tipo: 'orden_pago',
+        titulo: 'Pago confirmado',
+        mensaje: `Pago recibido para la orden ${orden.ordenNumero} de ${orden.cliente?.nombre || ''}`,
+        meta: { id: id, ordenNumero: orden.ordenNumero },
+      })
+    }
     res.json({ orden: orden.toObject() })
   } catch (err) {
     console.error('[Ordenes] Error actualizando pago:', err.message)
@@ -292,6 +320,12 @@ export async function cancelarOrden(req, res) {
       tipo: 'cancelacion',
       descripcion: motivo || 'Orden cancelada',
       cambios: { campo: 'estado', valorAnterior: 'procesando', valorNuevo: 'cancelada' },
+    })
+    crearYEmitir(req.db, req.tenantDbName, {
+      tipo: 'orden_cancelada',
+      titulo: 'Orden cancelada',
+      mensaje: `La orden ${orden.ordenNumero} fue cancelada${motivo ? `: ${motivo}` : ''}`,
+      meta: { id: id, ordenNumero: orden.ordenNumero },
     })
     res.json({ orden: orden.toObject(), ticket })
   } catch (err) {

@@ -1,5 +1,6 @@
 import { getClienteModel } from "../models/cliente.model.js"
 import mongoose from "mongoose"
+import { crearYEmitir } from "./notification.controller.js"
 
 function toClienteResponse(doc) {
   if (!doc) return null
@@ -66,6 +67,12 @@ export async function crear(req, res) {
       ciudadBarrio: ciudadBarrio ?? "",
       estado: estado === "pausado" || estado === "inactivo" ? estado : "activo",
       miracleCoins: Math.max(0, Number(miracleCoins) || 0),
+    })
+    crearYEmitir(req.db, req.tenantDbName, {
+      tipo: 'cliente_creado',
+      titulo: 'Nuevo cliente registrado',
+      mensaje: `${nombreEmpresa} fue agregado al CRM`,
+      meta: { id: cliente._id.toString(), nombre: nombreEmpresa },
     })
     res.status(201).json(toClienteResponse(cliente))
   } catch (error) {

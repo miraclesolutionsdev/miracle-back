@@ -1,4 +1,6 @@
 import { getUserModel } from "../models/user.model.js"
+import { getTenantModel } from "../models/tenant.model.js"
+import { getRegistryDb, getDb } from "../config/connectionManager.js"
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
 
@@ -20,6 +22,77 @@ async function resolveIsOriginalAdmin(db, userId) {
   const hasAnyOriginal = users.some((u) => u.isOriginalAdmin === true)
   if (hasAnyOriginal) return false
   return users[0]._id.toString() === targetId
+}
+
+/** Login global — sin tenant middleware. Busca en todos los tenants quién tiene ese email. */
+export async function loginGlobal(req, res) {
+  try {
+    const { email, password } = req.body
+    const emailNorm = (email || "").trim().toLowerCase()
+    if (!emailNorm || !password) {
+      return res.status(400).json({ error: "Email y contraseña son obligatorios." })
+    }
+
+    const registryDb = await getRegistryDb()
+    const Tenant = getTenantModel(registryDb)
+    const tenants = await Tenant.find({}).lean()
+
+    let matchedTenant = null
+    let matchedUser = null
+
+    for (const tenant of tenants) {
+      const tenantDb = await getDb(tenant.dbName)
+      const User = getUserModel(tenantDb)
+      const user = await User.findOne({ email: emailNorm }).select("+password")
+      if (user) {
+        matchedTenant = tenant
+        matchedUser = user
+        break
+      }
+    }
+
+    if (!matchedUser || !matchedTenant) {
+      return res.status(401).json({ error: "No se encontró una cuenta con ese correo." })
+    }
+    if (matchedUser.activo === false) {
+      return res.status(401).json({ error: "Cuenta deshabilitada. Contacta al administrador." })
+    }
+    const ok = await bcrypt.compare(password, matchedUser.password)
+    if (!ok) return res.status(401).json({ error: "Credenciales inválidas." })
+
+    const isOriginal = await resolveIsOriginalAdmin(await getDb(matchedTenant.dbName), matchedUser._id)
+
+    const token = jwt.sign(
+      { userId: matchedUser._id.toString(), tenantSlug: matchedTenant.slug },
+      JWT_SECRET,
+      { expiresIn: "1d" }
+    )
+
+    const isProd = process.env.NODE_ENV === "production"
+    res.cookie("miracle_token", token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+      maxAge: 24 * 60 * 60 * 1000,
+      path: "/",
+    })
+
+    return res.json({
+      token,
+      user: {
+        id: matchedUser._id.toString(),
+        email: matchedUser.email,
+        nombre: matchedUser.nombre,
+        isOriginalAdmin: isOriginal,
+        tenantSlug: matchedTenant.slug,
+        tenantNombre: matchedTenant.nombre,
+      },
+      tenant: { slug: matchedTenant.slug, nombre: matchedTenant.nombre },
+    })
+  } catch (error) {
+    console.error("[Auth/Global]", error.message)
+    res.status(500).json({ error: "Error interno del servidor." })
+  }
 }
 
 export async function login(req, res) {
@@ -63,6 +136,7 @@ export async function login(req, res) {
         email: user.email,
         nombre: user.nombre,
         isOriginalAdmin: isOriginal,
+        tenantSlug: req.tenantSlug,
         tenantNombre: req.tenantNombre,
       },
     })
@@ -100,6 +174,7 @@ export async function obtenerPerfil(req, res) {
         email: user.email,
         nombre: user.nombre ?? "",
         isOriginalAdmin: isOriginal,
+        tenantSlug: req.tenantSlug,
         tenantNombre: req.tenantNombre,
       },
     })

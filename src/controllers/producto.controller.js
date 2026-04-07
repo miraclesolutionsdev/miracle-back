@@ -1,6 +1,7 @@
 import { getProductoModel } from "../models/producto.model.js"
 import mongoose from "mongoose"
 import { subirImagenEvitandoDuplicado, eliminarImagenPorUrl } from "../services/s3.service.js"
+import { crearYEmitir } from "./notification.controller.js"
 
 function parsePrecio(val) {
   if (typeof val === "number" && !Number.isNaN(val)) return Math.max(0, val)
@@ -126,6 +127,12 @@ export async function crear(req, res) {
       producto.imagenes = urlsSubidas
       await producto.save()
     }
+    crearYEmitir(req.db, req.tenantDbName, {
+      tipo: 'producto_creado',
+      titulo: 'Producto añadido al catálogo',
+      mensaje: `"${nom}" fue agregado como ${producto.tipo === 'producto' ? 'producto' : 'servicio'}`,
+      meta: { id: producto._id.toString(), nombre: nom, tipo: producto.tipo },
+    })
     res.status(201).json(toProductoResponse(producto))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -193,6 +200,12 @@ export async function inactivar(req, res) {
     const Producto = getProductoModel(req.db)
     const producto = await Producto.findByIdAndUpdate(id, { estado: "inactivo" }, { new: true })
     if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
+    crearYEmitir(req.db, req.tenantDbName, {
+      tipo: 'producto_inactivado',
+      titulo: 'Producto inactivado',
+      mensaje: `"${producto.nombre}" fue marcado como inactivo`,
+      meta: { id: id, nombre: producto.nombre },
+    })
     res.json(toProductoResponse(producto))
   } catch (error) {
     res.status(500).json({ error: error.message })

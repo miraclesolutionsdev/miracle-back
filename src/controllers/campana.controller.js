@@ -1,5 +1,6 @@
 import { getCampanaModel } from "../models/campana.model.js"
 import mongoose from "mongoose"
+import { crearYEmitir } from "./notification.controller.js"
 
 function toResponse(doc) {
   if (!doc) return null
@@ -62,6 +63,12 @@ export async function crear(req, res) {
       miracleCoins: Math.max(0, Number(miracleCoins) || 0),
       estado: ["borrador", "activa", "pausada", "finalizada"].includes(estado) ? estado : "borrador",
     })
+    crearYEmitir(req.db, req.tenantDbName, {
+      tipo: 'campana_creada',
+      titulo: 'Nueva campaña creada',
+      mensaje: `"${campana.nombre}" fue creada${campana.plataforma ? ` para ${campana.plataforma}` : ''}`,
+      meta: { id: campana._id.toString(), nombre: campana.nombre, plataforma: campana.plataforma },
+    })
     res.status(201).json(toResponse(campana))
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -121,6 +128,13 @@ export async function actualizarEstado(req, res) {
     const Campana = getCampanaModel(req.db)
     const campana = await Campana.findByIdAndUpdate(id, { estado }, { new: true }).lean()
     if (!campana) return res.status(404).json({ error: "Campaña no encontrada" })
+    const estadoLabel = { activa: 'activada', pausada: 'pausada', finalizada: 'finalizada', borrador: 'guardada como borrador' }
+    crearYEmitir(req.db, req.tenantDbName, {
+      tipo: 'campana_estado',
+      titulo: 'Estado de campaña actualizado',
+      mensaje: `"${campana.nombre}" está ahora ${estadoLabel[estado] || estado}`,
+      meta: { id: id, nombre: campana.nombre, estado },
+    })
     res.json(toResponse(campana))
   } catch (error) {
     res.status(500).json({ error: error.message })

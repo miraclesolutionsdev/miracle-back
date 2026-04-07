@@ -1,76 +1,74 @@
+import jwt from "jsonwebtoken"
 import { getDb, getRegistryDb } from "../config/connectionManager.js"
 import { getTenantModel } from "../models/tenant.model.js"
 
-// Cache hostname → { tenant, ts } con TTL de 5 minutos
 const tenantCache = new Map()
-const TENANT_CACHE_TTL = 5 * 60 * 1000
+const CACHE_TTL = 5 * 60 * 1000
 
-function getCached(hostname) {
-  const entry = tenantCache.get(hostname)
+function getCached(slug) {
+  const entry = tenantCache.get(slug)
   if (!entry) return null
-  if (Date.now() - entry.ts > TENANT_CACHE_TTL) {
-    tenantCache.delete(hostname)
+  if (Date.now() - entry.ts > CACHE_TTL) {
+    tenantCache.delete(slug)
     return null
   }
   return entry.tenant
 }
 
 /**
- * Resuelve el tenant a partir del hostname de la petición.
- * Adjunta req.db, req.tenantSlug y req.tenantDbName para los controllers.
+ * Resuelve el tenant en este orden de prioridad:
+ *  1. Header X-Tenant-Slug (enviado por el frontend desde la URL)
+ *  2. tenantSlug dentro del JWT (cookie o Authorization header)
  *
- * Lógica de resolución:
- *   1. localhost / 127.0.0.1 → DEV_TENANT_SLUG (default: "miraclesolutions")
- *   2. Dominio exacto en tenant.dominios (ej. "tiendazapatos.com.co")
- *   3. Primer segmento del hostname como slug (ej. "miraclesolutions.com.co" → "miraclesolutions")
+ * Funciona igual en local y en producción — sin env vars de parche.
  */
 export async function tenantMiddleware(req, res, next) {
   try {
-    // Usar el header Origin/Referer para obtener el dominio del FRONTEND,
-    // no req.hostname que devuelve el dominio del backend (ej. en Vercel)
-    let hostname = req.hostname
-    const origin = req.headers.origin || req.headers.referer || ""
-    if (origin) {
-      try {
-        hostname = new URL(origin).hostname
-      } catch { /* mantener req.hostname como fallback */ }
+    let slug = req.headers["x-tenant-slug"]?.trim()?.toLowerCase()
+
+    // Fallback: extraer tenantSlug del JWT si no viene el header
+    if (!slug) {
+      const token =
+        req.cookies?.miracle_token ||
+        (req.headers.authorization?.startsWith("Bearer ")
+          ? req.headers.authorization.slice(7)
+          : null)
+      if (token) {
+        try {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET)
+          slug = decoded.tenantSlug?.toLowerCase()
+        } catch { /* token inválido o expirado */ }
+      }
     }
 
-    let tenant = getCached(hostname)
+    if (!slug) {
+      return res.status(400).json({ error: "No se pudo determinar el tenant." })
+    }
+
+    let tenant = getCached(slug)
 
     if (!tenant) {
       const registryDb = await getRegistryDb()
       const Tenant = getTenantModel(registryDb)
-
-      if (hostname === "localhost" || hostname === "127.0.0.1") {
-        const devSlug = process.env.DEV_TENANT_SLUG || "miraclesolutions"
-        tenant = await Tenant.findOne({ slug: devSlug }).lean()
-      } else {
-        // Buscar por dominio custom registrado
-        tenant = await Tenant.findOne({ dominios: hostname }).lean()
-
-        if (!tenant) {
-          // Extraer slug del primer segmento del hostname
-          const slug = hostname.split(".")[0]
-          tenant = await Tenant.findOne({ slug }).lean()
-        }
-      }
-
-      if (tenant) tenantCache.set(hostname, { tenant, ts: Date.now() })
+      tenant = await Tenant.findOne({ slug }).lean()
+      if (tenant) tenantCache.set(slug, { tenant, ts: Date.now() })
     }
 
     if (!tenant) {
-      return res.status(404).json({ error: "Tenant no encontrado para este dominio" })
+      return res.status(404).json({ error: `Tenant "${slug}" no encontrado.` })
     }
 
     req.db = await getDb(tenant.dbName)
     req.tenantSlug = tenant.slug
-    req.tenantDbName = tenant.dbName
     req.tenantNombre = tenant.nombre
-    req.elevenLabsAgentId = tenant.elevenLabsAgentId || null
+    req.tenantDbName = tenant.dbName
+    req.elevenLabsAgentId =
+      tenant.elevenLabsAgentId ||
+      (tenant.slug === "miraclesolutions" ? process.env.ELEVENLABS_AGENT_ID || null : null)
+
     next()
   } catch (err) {
     console.error("[Tenant]", err.message)
-    res.status(503).json({ error: "Error al resolver el tenant" })
+    res.status(503).json({ error: "Error al resolver el tenant." })
   }
 }
