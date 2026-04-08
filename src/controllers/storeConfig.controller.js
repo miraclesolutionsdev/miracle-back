@@ -13,7 +13,7 @@ export async function infoTienda(req, res) {
     const Tenant = getTenantModel(registryDb)
     const tenant = await Tenant.findOne({ slug }).lean()
     if (!tenant) return res.status(404).json({ error: 'Tenant no encontrado.' })
-    return res.json({ slug: tenant.slug, nombre: tenant.nombre })
+    return res.json({ slug: tenant.slug, nombre: tenant.nombre, dominio: tenant.dominios?.[0] || null })
   } catch (err) {
     console.error('[StoreConfig]', err.message)
     return res.status(500).json({ error: 'Error interno.' })
