@@ -184,10 +184,11 @@ export async function recibirWebhook(req, res) {
       const payerFirst = (pago.payer?.first_name || pago.additional_info?.payer?.first_name || '').trim()
       const payerLast  = (pago.payer?.last_name  || pago.additional_info?.payer?.last_name  || '').trim()
       const payerEmail = (pago.payer?.email || '').trim()
-      const payerPhone = pago.payer?.phone?.number ? String(pago.payer.phone.number) : ''
       const m = pago.metadata || {}
       const clienteNombre  = (m.cliente_nombre  || m.clienteNombre  || [payerFirst, payerLast].filter(Boolean).join(' ') || payerEmail.split('@')[0]).trim()
-      const clienteCelular = (m.cliente_celular || m.clienteCelular || payerPhone).trim()
+      // Solo se usa el celular del formulario (metadata). NO se usa payer.phone.number porque
+      // MercadoPago puede retornar la cédula del perfil MP del comprador en ese campo.
+      const clienteCelular = (m.cliente_celular || m.clienteCelular || '').trim()
       const emailComprador = (m.cliente_email   || m.clienteEmail   || payerEmail || 'desconocido@nointent.com').trim()
       const clienteCedula  = (m.cliente_cedula  || m.clienteCedula  || '').trim()
       const envioDireccion = (m.envio_direccion || m.envioDireccion || '').trim()
