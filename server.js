@@ -15,6 +15,7 @@ import { tenantMiddleware } from "./src/middleware/tenant.middleware.js"
 import authRoutes from "./src/routes/auth.routes.js"
 import { loginGlobal } from "./src/controllers/auth.controller.js"
 import storeConfigRoutes from "./src/routes/storeConfig.routes.js"
+import { resolverPorDominio, infoTienda } from "./src/controllers/storeConfig.controller.js"
 import userRoutes from "./src/routes/user.routes.js"
 import clienteRoutes from "./src/routes/cliente.routes.js"
 import productoRoutes from "./src/routes/producto.routes.js"
@@ -38,9 +39,25 @@ const ALLOWED_ORIGINS = new Set([
   `https://www.${process.env.MAIN_DOMAIN || "miraclesolutions.com.co"}`,
 ])
 
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   const origin = req.headers.origin
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
+
+  // Permitir orígenes fijos + cualquier dominio custom registrado en DB
+  let allowed = origin && ALLOWED_ORIGINS.has(origin)
+
+  if (!allowed && origin) {
+    try {
+      const { getRegistryDb } = await import("./src/config/connectionManager.js")
+      const { getTenantModel } = await import("./src/models/tenant.model.js")
+      const hostname = origin.replace(/^https?:\/\//, '').replace(/^www\./, '')
+      const registryDb = await getRegistryDb()
+      const Tenant = getTenantModel(registryDb)
+      const tenant = await Tenant.findOne({ dominios: hostname }).lean()
+      if (tenant) allowed = true
+    } catch { /* si falla, no bloquear — continúa sin CORS header */ }
+  }
+
+  if (allowed) {
     res.setHeader("Access-Control-Allow-Origin", origin)
     res.setHeader("Access-Control-Allow-Credentials", "true")
     res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS")
@@ -72,8 +89,8 @@ app.use(
 // Rutas públicas — sin tenant middleware
 app.use("/register", registerRoutes)
 app.post("/auth/login-global", loginGlobal)
-app.get("/store-config/dominio", storeConfigRoutes)
-app.get("/store-config/info", storeConfigRoutes)
+app.get("/store-config/dominio", resolverPorDominio)
+app.get("/store-config/info", infoTienda)
 app.get("/", (_req, res) => res.send("🚀 Backend Miracle funcionando"))
 
 // Todas las demás rutas resuelven el tenant por X-Tenant-Slug header
