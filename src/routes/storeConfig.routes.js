@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { resolverPorDominio, infoTienda, guardarDominio } from '../controllers/storeConfig.controller.js'
+import { resolverPorDominio, infoTienda, guardarDominio, guardarPlantilla } from '../controllers/storeConfig.controller.js'
 import { requireAuth } from '../middleware/auth.middleware.js'
 
 const router = Router()
@@ -10,5 +10,6 @@ router.get('/info', infoTienda)
 
 // Protegido — el admin guarda su dominio custom desde la plataforma
 router.patch('/dominio', requireAuth, guardarDominio)
+router.patch('/plantilla', requireAuth, guardarPlantilla)
 
 export default router

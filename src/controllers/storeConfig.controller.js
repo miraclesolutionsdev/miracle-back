@@ -13,7 +13,7 @@ export async function infoTienda(req, res) {
     const Tenant = getTenantModel(registryDb)
     const tenant = await Tenant.findOne({ slug }).lean()
     if (!tenant) return res.status(404).json({ error: 'Tenant no encontrado.' })
-    return res.json({ slug: tenant.slug, nombre: tenant.nombre, dominio: tenant.dominios?.[0] || null })
+    return res.json({ slug: tenant.slug, nombre: tenant.nombre, dominio: tenant.dominios?.[0] || null, plantilla: tenant.plantilla || 'luxury' })
   } catch (err) {
     console.error('[StoreConfig]', err.message)
     return res.status(500).json({ error: 'Error interno.' })
@@ -38,7 +38,29 @@ export async function resolverPorDominio(req, res) {
     if (!tenant) {
       return res.status(404).json({ error: `No hay tenant registrado para "${hostname}".` })
     }
-    return res.json({ slug: tenant.slug, nombre: tenant.nombre })
+    return res.json({ slug: tenant.slug, nombre: tenant.nombre, plantilla: tenant.plantilla || 'luxury' })
+  } catch (err) {
+    console.error('[StoreConfig]', err.message)
+    return res.status(500).json({ error: 'Error interno.' })
+  }
+}
+
+/**
+ * PATCH /store-config/plantilla
+ * Protegido. El admin elige la plantilla visual de su tienda.
+ * Body: { plantilla: "fitness" }
+ */
+export async function guardarPlantilla(req, res) {
+  const plantilla = (req.body.plantilla || '').trim().toLowerCase()
+  const validas = ['luxury', 'fitness', 'minimal', 'food', 'modern']
+  if (!validas.includes(plantilla)) {
+    return res.status(400).json({ error: `Plantilla inválida. Opciones: ${validas.join(', ')}` })
+  }
+  try {
+    const registryDb = await getRegistryDb()
+    const Tenant = getTenantModel(registryDb)
+    await Tenant.updateOne({ slug: req.tenantSlug }, { $set: { plantilla } })
+    return res.json({ ok: true, plantilla })
   } catch (err) {
     console.error('[StoreConfig]', err.message)
     return res.status(500).json({ error: 'Error interno.' })

@@ -13,6 +13,8 @@ const tenantSchema = new mongoose.Schema(
     nombre: { type: String, required: true, trim: true },
     // Dominios custom registrados (ej. "tiendazapatos.com.co")
     dominios: { type: [String], default: [] },
+    // Plantilla visual de la tienda (luxury, fitness, minimal, food, modern)
+    plantilla: { type: String, default: 'luxury', enum: ['luxury', 'fitness', 'minimal', 'food', 'modern'] },
     // ID del agente ElevenLabs propio de este tenant (opcional)
     elevenLabsAgentId: { type: String, default: null },
   },
