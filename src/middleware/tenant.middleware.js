@@ -62,9 +62,7 @@ export async function tenantMiddleware(req, res, next) {
     req.tenantSlug = tenant.slug
     req.tenantNombre = tenant.nombre
     req.tenantDbName = tenant.dbName
-    req.elevenLabsAgentId =
-      tenant.elevenLabsAgentId ||
-      (tenant.slug === "miraclesolutions" ? process.env.ELEVENLABS_AGENT_ID || null : null)
+    req.elevenLabsAgentId = tenant.elevenLabsAgentId || null
 
     next()
   } catch (err) {
