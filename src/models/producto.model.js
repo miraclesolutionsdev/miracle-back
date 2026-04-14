@@ -28,6 +28,8 @@ const productoSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    categoria: { type: String, trim: true, default: "" },
+    subcategoria: { type: String, trim: true, default: "" },
     stock: { type: Number, default: 0, min: 0 },
     whatsapp: { type: String, trim: true, default: "" },
     usos: { type: [String], default: [] },

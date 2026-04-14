@@ -30,6 +30,8 @@ function toProductoResponse(doc) {
     tipo: o.tipo ?? "servicio",
     estado: o.estado ?? "activo",
     imagenes,
+    categoria: o.categoria ?? "",
+    subcategoria: o.subcategoria ?? "",
     stock: o.stock ?? 0,
     whatsapp: o.whatsapp ?? "",
     usos: Array.isArray(o.usos) ? o.usos : [],
@@ -86,7 +88,7 @@ export async function obtenerUno(req, res) {
 
 export async function crear(req, res) {
   try {
-    const { nombre, descripcion, precio, tipo, estado, stock, whatsapp, usos, caracteristicas } = req.body
+    const { nombre, descripcion, precio, tipo, estado, stock, whatsapp, usos, caracteristicas, categoria, subcategoria } = req.body
     const files = req.files || []
     if (!nombre) {
       return res.status(400).json({ error: "Faltan campos requeridos: nombre" })
@@ -111,6 +113,8 @@ export async function crear(req, res) {
       tipo: tipo === "producto" ? "producto" : "servicio",
       estado: estado === "inactivo" ? "inactivo" : "activo",
       imagenes,
+      categoria: (categoria ?? "").trim(),
+      subcategoria: (subcategoria ?? "").trim(),
       stock: Math.max(0, Number(stock) || 0),
       whatsapp: (whatsapp ?? "").trim(),
       usos: parseJsonArray(usos),
@@ -120,7 +124,7 @@ export async function crear(req, res) {
       const urlsSubidas = []
       for (const f of files) {
         const url = await subirImagenEvitandoDuplicado(
-          f.buffer, f.mimetype || "image/jpeg", f.originalname || "imagen.jpg"
+          f.buffer, f.mimetype || "image/jpeg", f.originalname || "imagen.jpg", req.tenantSlug
         )
         urlsSubidas.push({ url, contentType: f.mimetype || "image/jpeg" })
       }
@@ -145,11 +149,13 @@ export async function actualizar(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
-    const { nombre, descripcion, precio, tipo, estado, stock, whatsapp, usos, caracteristicas } = req.body
+    const { nombre, descripcion, precio, tipo, estado, stock, whatsapp, usos, caracteristicas, categoria, subcategoria } = req.body
     const files = req.files || []
     const update = {}
     const Producto = getProductoModel(req.db)
     if (nombre !== undefined) update.nombre = (nombre || "").trim()
+    if (categoria !== undefined) update.categoria = (categoria ?? "").trim()
+    if (subcategoria !== undefined) update.subcategoria = (subcategoria ?? "").trim()
     if (descripcion !== undefined) update.descripcion = descripcion
     if (whatsapp !== undefined) update.whatsapp = (whatsapp ?? "").trim()
     if (update.nombre !== undefined) {
@@ -169,7 +175,7 @@ export async function actualizar(req, res) {
       const nuevasUrls = []
       for (const f of files) {
         const url = await subirImagenEvitandoDuplicado(
-          f.buffer, f.mimetype || "image/jpeg", f.originalname || "imagen.jpg"
+          f.buffer, f.mimetype || "image/jpeg", f.originalname || "imagen.jpg", req.tenantSlug
         )
         nuevasUrls.push({ url, contentType: f.mimetype || "image/jpeg" })
       }

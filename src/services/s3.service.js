@@ -21,15 +21,16 @@ function getBaseUrl() {
 }
 
 /**
- * Genera una key S3 a partir del nombre de archivo: {carpeta}/{nombre-sanitizado}.
- * Si dos archivos tienen el mismo nombre, generan la misma key (evita duplicados).
+ * Genera una key S3 a partir del nombre de archivo: {tenant}/{carpeta}/{nombre-sanitizado}.
+ * Si dos archivos tienen el mismo nombre en el mismo tenant, generan la misma key (evita duplicados).
  */
-function keyDesdeNombre(originalname, carpeta = "productos") {
+function keyDesdeNombre(originalname, carpeta = "productos", tenantSlug = "") {
   const base = (originalname || "").replace(/^.*[/\\]/, "").trim().toLowerCase() || "archivo"
   const ext = base.includes(".") ? base.slice(base.lastIndexOf(".")) : ".bin"
   const sinExt = base.slice(0, base.length - ext.length) || "archivo"
   const sanitized = sinExt.replace(/[^a-z0-9._-]/g, "_").slice(0, 100) || "archivo"
-  return `${carpeta}/${sanitized}${ext}`
+  const prefix = tenantSlug ? `${tenantSlug}/${carpeta}` : carpeta
+  return `${prefix}/${sanitized}${ext}`
 }
 
 /**
@@ -71,11 +72,12 @@ export async function subirImagen(buffer, contentType, key) {
  * @param {Buffer} buffer - Contenido del archivo
  * @param {string} contentType - ej. "image/jpeg"
  * @param {string} originalname - Nombre original del archivo (ej. "foto.jpg")
+ * @param {string} tenantSlug - Slug del tenant para separar archivos por carpeta
  * @returns {Promise<string>} URL pública (existente o nueva)
  */
-export async function subirImagenEvitandoDuplicado(buffer, contentType, originalname) {
+export async function subirImagenEvitandoDuplicado(buffer, contentType, originalname, tenantSlug = "") {
   if (!bucket) throw new Error("S3_BUCKET no está configurado en .env")
-  const key = keyDesdeNombre(originalname, "productos")
+  const key = keyDesdeNombre(originalname, "productos", tenantSlug)
   if (await existeEnS3(key)) {
     return `${getBaseUrl()}/${key}`
   }
@@ -86,9 +88,9 @@ export async function subirImagenEvitandoDuplicado(buffer, contentType, original
  * Sube un archivo (video o imagen) a S3 en la carpeta audiovisuales.
  * Evita duplicados por nombre de archivo.
  */
-export async function subirArchivoAudiovisualEvitandoDuplicado(buffer, contentType, originalname) {
+export async function subirArchivoAudiovisualEvitandoDuplicado(buffer, contentType, originalname, tenantSlug = "") {
   if (!bucket) throw new Error("S3_BUCKET no está configurado en .env")
-  const key = keyDesdeNombre(originalname, "audiovisuales")
+  const key = keyDesdeNombre(originalname, "audiovisuales", tenantSlug)
   if (await existeEnS3(key)) {
     return `${getBaseUrl()}/${key}`
   }
@@ -106,22 +108,23 @@ export async function subirArchivoAudiovisualEvitandoDuplicado(buffer, contentTy
 /**
  * Genera una key única para audiovisuales (evita sobrescribir).
  */
-function keyAudiovisualUnica(originalname) {
+function keyAudiovisualUnica(originalname, tenantSlug = "") {
   const base = (originalname || "").replace(/^.*[/\\]/, "").trim().toLowerCase() || "archivo"
   const ext = base.includes(".") ? base.slice(base.lastIndexOf(".")) : ".bin"
   const sinExt = base.slice(0, base.length - ext.length) || "archivo"
   const sanitized = sinExt.replace(/[^a-z0-9._-]/g, "_").slice(0, 80) || "archivo"
   const uniq = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-  return `audiovisuales/${uniq}_${sanitized}${ext}`
+  const prefix = tenantSlug ? `${tenantSlug}/audiovisuales` : "audiovisuales"
+  return `${prefix}/${uniq}_${sanitized}${ext}`
 }
 
 /**
  * Obtiene una URL firmada (presigned) para que el cliente suba el archivo directo a S3.
  * Permite archivos hasta 1GB sin pasar por el servidor.
  */
-export async function obtenerPresignedPutAudiovisual(originalname, contentType) {
+export async function obtenerPresignedPutAudiovisual(originalname, contentType, tenantSlug = "") {
   if (!bucket) throw new Error("S3_BUCKET no está configurado en .env")
-  const key = keyAudiovisualUnica(originalname)
+  const key = keyAudiovisualUnica(originalname, tenantSlug)
   const command = new PutObjectCommand({
     Bucket: bucket,
     Key: key,

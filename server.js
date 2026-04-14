@@ -27,6 +27,7 @@ import ordenRoutes from "./src/routes/orden.routes.js"
 import whatsappRoutes from "./src/routes/whatsapp.routes.js"
 import registerRoutes from "./src/routes/register.routes.js"
 import notificationRoutes from "./src/routes/notification.routes.js"
+import { crearOrdenWhatsApp, recibirWebhookConversacion } from "./src/controllers/whatsapp.controller.js"
 
 const app = express()
 app.set("trust proxy", 1)
@@ -92,6 +93,10 @@ app.post("/auth/login-global", loginGlobal)
 app.get("/store-config/dominio", resolverPorDominio)
 app.get("/store-config/info", infoTienda)
 app.get("/", (_req, res) => res.send("🚀 Backend Miracle funcionando"))
+
+// Webhooks públicos de WhatsApp (con x-api-key, sin tenant middleware)
+app.post("/whatsapp/crear-orden", crearOrdenWhatsApp)
+app.post("/whatsapp/webhook/conversation", recibirWebhookConversacion)
 
 // Todas las demás rutas resuelven el tenant por X-Tenant-Slug header
 app.use(tenantMiddleware)

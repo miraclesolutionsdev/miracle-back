@@ -3,6 +3,7 @@ import { getProductoModel } from '../models/producto.model.js'
 import { getOrdenModel } from '../models/orden.model.js'
 import { getTicketModel } from '../models/ticket.model.js'
 import { getClienteModel } from '../models/cliente.model.js'
+import { getLeadWhatsappModel } from '../models/leadWhatsapp.model.js'
 import { generarNumeroOrden } from '../utils/ordenUtils.js'
 
 const client = new MercadoPagoConfig({
@@ -162,5 +163,197 @@ export async function obtenerConversacion(req, res) {
   } catch (err) {
     console.error('[EL] Error:', err.message)
     return res.status(500).json({ error: 'Error interno al consultar ElevenLabs.' })
+  }
+}
+
+// ── Webhook de ElevenLabs (conversaciones) ────────────────────────────────
+
+/**
+ * Webhook para recibir notificaciones de conversaciones de ElevenLabs.
+ * Esta ruta es pública y será llamada por ElevenLabs cuando:
+ * - Una conversación se inicia
+ * - Una conversación se completa
+ * - Una conversación falla
+ */
+export async function recibirWebhookConversacion(req, res) {
+  try {
+    // Validar API key para seguridad
+    if (!validarApiKey(req, res)) return
+
+    const payload = req.body
+    console.log('[EL Webhook] Conversación recibida:', JSON.stringify(payload, null, 2))
+
+    // Extraer datos del payload de ElevenLabs
+    const {
+      conversation_id,
+      agent_id,
+      status,
+      start_time_unix_secs,
+      call_duration_secs,
+      transcript = [],
+      metadata = {},
+    } = payload
+
+    if (!conversation_id || !agent_id) {
+      return res.status(400).json({ error: 'Faltan datos requeridos: conversation_id, agent_id' })
+    }
+
+    // Determinar a qué tenant pertenece este agente
+    const { getRegistryDb } = await import('../config/connectionManager.js')
+    const { getTenantModel } = await import('../models/tenant.model.js')
+    const { getDb } = await import('../config/connectionManager.js')
+
+    const registryDb = await getRegistryDb()
+    const Tenant = getTenantModel(registryDb)
+    const tenant = await Tenant.findOne({ elevenLabsAgentId: agent_id }).lean()
+
+    if (!tenant) {
+      console.warn(`[EL Webhook] No se encontró tenant para agentId: ${agent_id}`)
+      return res.status(404).json({ error: `No se encontró tenant para el agente ${agent_id}` })
+    }
+
+    // Conectar a la DB del tenant
+    const tenantDb = await getDb(tenant.dbName)
+    const LeadWhatsapp = getLeadWhatsappModel(tenantDb)
+
+    // Extraer número de teléfono si está en metadata o transcript
+    let phoneNumber = metadata?.phone_number || metadata?.caller_number || null
+    if (!phoneNumber && transcript.length > 0) {
+      // Intentar extraer de mensajes del usuario que contengan números
+      const userMessages = transcript.filter(m => m.role === 'user').map(m => m.message).join(' ')
+      const phoneMatch = userMessages.match(/\+?\d{10,15}/)
+      phoneNumber = phoneMatch ? phoneMatch[0] : null
+    }
+
+    // Normalizar transcript al formato esperado
+    const normalizedTranscript = transcript.map(msg => ({
+      role: msg.role || 'user',
+      message: msg.message || msg.text || '',
+      time: msg.time || msg.timestamp || 0,
+    }))
+
+    // Crear o actualizar el lead
+    const lead = await LeadWhatsapp.findOneAndUpdate(
+      { conversationId: conversation_id },
+      {
+        $set: {
+          agentId: agent_id,
+          status: status || 'other',
+          startTimeUnixSecs: start_time_unix_secs || Math.floor(Date.now() / 1000),
+          callDurationSecs: call_duration_secs || 0,
+          messageCount: normalizedTranscript.length,
+          transcript: normalizedTranscript,
+          metadata,
+          phoneNumber,
+        },
+      },
+      { upsert: true, new: true }
+    )
+
+    console.log(`[EL Webhook] ✓ Lead guardado: ${conversation_id} | Tenant: ${tenant.slug} | Tel: ${phoneNumber || 'N/A'}`)
+
+    return res.json({ ok: true, lead_id: lead._id, tenant: tenant.slug })
+  } catch (err) {
+    console.error('[EL Webhook] Error procesando webhook:', err.message)
+    return res.status(500).json({ error: 'Error interno al procesar webhook.' })
+  }
+}
+
+// ── Listar Leads desde BD Local ──────────────────────────────────────────
+
+/**
+ * Lista las conversaciones/leads de WhatsApp desde la base de datos local.
+ * Reemplaza la consulta directa a ElevenLabs API.
+ */
+export async function listarLeadsWhatsapp(req, res) {
+  try {
+    const LeadWhatsapp = getLeadWhatsappModel(req.db)
+
+    const {
+      page = 1,
+      limit = 50,
+      status,
+      estadoLead,
+    } = req.query
+
+    const filter = {}
+    if (status) filter.status = status
+    if (estadoLead) filter.estadoLead = estadoLead
+
+    const pageNum = Math.max(1, parseInt(page) || 1)
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50))
+    const skip = (pageNum - 1) * limitNum
+
+    const [leads, total] = await Promise.all([
+      LeadWhatsapp.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      LeadWhatsapp.countDocuments(filter),
+    ])
+
+    return res.json({
+      leads,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum),
+      },
+    })
+  } catch (err) {
+    console.error('[Leads WA] Error listando leads:', err.message)
+    return res.status(500).json({ error: 'Error al listar leads de WhatsApp.' })
+  }
+}
+
+/**
+ * Obtiene el detalle de un lead específico desde la BD local.
+ */
+export async function obtenerLeadWhatsapp(req, res) {
+  try {
+    const LeadWhatsapp = getLeadWhatsappModel(req.db)
+    const { id } = req.params
+
+    const lead = await LeadWhatsapp.findById(id).lean()
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead no encontrado.' })
+    }
+
+    return res.json(lead)
+  } catch (err) {
+    console.error('[Leads WA] Error obteniendo lead:', err.message)
+    return res.status(500).json({ error: 'Error al obtener lead de WhatsApp.' })
+  }
+}
+
+/**
+ * Actualiza el estado o notas de un lead.
+ */
+export async function actualizarLeadWhatsapp(req, res) {
+  try {
+    const LeadWhatsapp = getLeadWhatsappModel(req.db)
+    const { id } = req.params
+    const { estadoLead, notas } = req.body
+
+    const updates = {}
+    if (estadoLead) updates.estadoLead = estadoLead
+    if (notas !== undefined) updates.notas = notas
+
+    const lead = await LeadWhatsapp.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true }
+    ).lean()
+
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead no encontrado.' })
+    }
+
+    return res.json(lead)
+  } catch (err) {
+    console.error('[Leads WA] Error actualizando lead:', err.message)
+    return res.status(500).json({ error: 'Error al actualizar lead de WhatsApp.' })
   }
 }

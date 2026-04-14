@@ -51,7 +51,7 @@ export async function crear(req, res) {
         ? `${resolucion} · ${duracion}`
         : resolucion ?? ""
     const url = await subirArchivoAudiovisualEvitandoDuplicado(
-      file.buffer, file.mimetype, file.originalname || "archivo"
+      file.buffer, file.mimetype, file.originalname || "archivo", req.tenantSlug
     )
     const PiezaAudiovisual = getPiezaAudiovisualModel(req.db)
     const pieza = await PiezaAudiovisual.create({
@@ -80,7 +80,7 @@ export async function obtenerPresignedUrl(req, res) {
     const { filename, contentType } = req.body
     const name = (filename || "").trim() || "archivo"
     const type = (contentType || "").trim() || "application/octet-stream"
-    const { uploadUrl, key, publicUrl } = await obtenerPresignedPutAudiovisual(name, type)
+    const { uploadUrl, key, publicUrl } = await obtenerPresignedPutAudiovisual(name, type, req.tenantSlug)
     res.json({ uploadUrl, key, publicUrl })
   } catch (error) {
     res.status(500).json({ error: error.message })
