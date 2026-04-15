@@ -30,29 +30,92 @@ export async function crearOrdenWhatsApp(req, res) {
     const {
       nombre, telefono,
       ciudad = '', ciudadBarrio = '', direccion = '',
+      productos: productosArray,
+      // Compatibilidad con formato antiguo (un solo producto)
       producto: productoNombre,
-      talla = '', color = '',
       cantidad: cantidadRaw = 1,
+      talla = '', color = '',
     } = req.body
-    if (!nombre || !telefono || !productoNombre) {
-      return res.status(400).json({ error: 'Faltan datos requeridos: nombre, telefono, producto' })
+
+    if (!nombre || !telefono) {
+      return res.status(400).json({ error: 'Faltan datos requeridos: nombre, telefono' })
     }
-    const cantidad = Math.max(1, Math.min(99, parseInt(cantidadRaw) || 1))
+
+    // Determinar si viene array de productos o un solo producto (formato legacy)
+    let productosParaProcesar = []
+
+    if (productosArray && Array.isArray(productosArray) && productosArray.length > 0) {
+      // Formato nuevo: array de productos (puede ser strings o objetos)
+      productosParaProcesar = productosArray.map(p => {
+        // Si es string tipo "PRODUCTO, CANTIDAD"
+        if (typeof p === 'string') {
+          const [nombre, cantidadStr] = p.split(',').map(s => s.trim())
+          return {
+            nombre: nombre || '',
+            cantidad: Math.max(1, Math.min(99, parseInt(cantidadStr) || 1))
+          }
+        }
+        // Si es objeto {nombre, cantidad}
+        return {
+          nombre: p.nombre || p.producto || '',
+          cantidad: Math.max(1, Math.min(99, parseInt(p.cantidad) || 1))
+        }
+      }).filter(p => p.nombre) // Eliminar items vacíos
+    } else if (productoNombre) {
+      // Formato legacy: un solo producto
+      productosParaProcesar = [{
+        nombre: productoNombre,
+        cantidad: Math.max(1, Math.min(99, parseInt(cantidadRaw) || 1))
+      }]
+    } else {
+      return res.status(400).json({ error: 'Debe especificar al menos un producto (productos[] o producto)' })
+    }
+
     const Producto = getProductoModel(req.db)
-    const producto = await Producto.findOne({
-      nombre: { $regex: productoNombre.trim(), $options: 'i' },
-      estado: 'activo',
-    })
-    if (!producto) {
-      return res.status(404).json({ error: `No se encontró el producto "${productoNombre}" en el catálogo activo.` })
+
+    // Buscar y validar todos los productos
+    const productosEncontrados = []
+    let totalMonto = 0
+
+    for (const item of productosParaProcesar) {
+      const producto = await Producto.findOne({
+        nombre: { $regex: item.nombre.trim(), $options: 'i' },
+        estado: 'activo',
+      })
+
+      if (!producto) {
+        return res.status(404).json({ error: `No se encontró el producto "${item.nombre}" en el catálogo activo.` })
+      }
+
+      const precioTotal = Number(producto.precio) * item.cantidad
+      totalMonto += precioTotal
+
+      productosEncontrados.push({
+        productoId: producto._id,
+        productoNombre: producto.nombre,
+        cantidad: item.cantidad,
+        precioUnitario: Number(producto.precio),
+        precioTotal
+      })
     }
-    const itemTitle = [producto.nombre, talla && `Talla ${talla}`, color].filter(Boolean).join(' - ')
+
     const ciudadFinal = ciudadBarrio || ciudad
     const FRONT_URL = process.env.FRONT_URL || 'https://www.miraclesolutions.com.co'
+
+    // Crear items para MercadoPago
+    const mpItems = productosEncontrados.map(p => ({
+      id: p.productoId.toString(),
+      title: p.productoNombre,
+      description: p.productoNombre,
+      quantity: p.cantidad,
+      unit_price: p.precioUnitario,
+      currency_id: 'COP'
+    }))
+
     const preference = new Preference(client)
     const mpResult = await preference.create({
       body: {
-        items: [{ id: producto._id.toString(), title: itemTitle, description: itemTitle, quantity: cantidad, unit_price: Number(producto.precio), currency_id: 'COP' }],
+        items: mpItems,
         back_urls: {
           success: `${FRONT_URL}/pago/exitoso`,
           failure: `${FRONT_URL}/pago/fallido`,
@@ -61,14 +124,19 @@ export async function crearOrdenWhatsApp(req, res) {
         ...(FRONT_URL.startsWith('https') && { auto_return: 'approved' }),
         statement_descriptor: 'Miracle Solutions',
         metadata: {
-          origen: 'whatsapp', productoId: producto._id.toString(), tenantSlug: req.tenantSlug,
-          cantidad, clienteNombre: nombre, clienteCelular: telefono,
-          talla, color, envioDireccion: direccion, envioBarrio: ciudadFinal,
+          origen: 'whatsapp',
+          tenantSlug: req.tenantSlug,
+          clienteNombre: nombre,
+          clienteCelular: telefono,
+          envioDireccion: direccion,
+          envioBarrio: ciudadFinal,
         },
       },
     })
+
     const preferenceId = mpResult.id
-    const linkPago     = mpResult.init_point
+    const linkPago = mpResult.init_point
+
     const Cliente = getClienteModel(req.db)
     const cliente = await Cliente.findOneAndUpdate(
       { whatsapp: telefono },
@@ -78,18 +146,33 @@ export async function crearOrdenWhatsApp(req, res) {
       },
       { upsert: true, new: true }
     )
+
     const ordenNumero = await generarNumeroOrden(req.db)
-    const Orden  = getOrdenModel(req.db)
+    const Orden = getOrdenModel(req.db)
     const Ticket = getTicketModel(req.db)
+
     const nuevaOrden = await Orden.create({
-      ordenNumero, clienteId: cliente._id,
+      ordenNumero,
+      clienteId: cliente._id,
       cliente: { nombre, email: '', whatsapp: telefono, cedula: '' },
       envio: { direccion, barrio: ciudadFinal },
-      productos: [{ productoId: producto._id, productoNombre: producto.nombre, cantidad, precioUnitario: Number(producto.precio), precioTotal: Number(producto.precio) * cantidad }],
-      totalMonto: Number(producto.precio) * cantidad,
-      estado: 'pendiente', estadoPago: 'no_pagado', estadoPreparacion: 'no_preparado',
-      origen: 'whatsapp', metodoPago: 'mercadopago', preferenceId, talla, color,
+      productos: productosEncontrados,
+      totalMonto,
+      estado: 'pendiente',
+      estadoPago: 'no_pagado',
+      estadoPreparacion: 'no_preparado',
+      origen: 'whatsapp',
+      metodoPago: 'mercadopago',
+      preferenceId,
+      talla,
+      color,
     })
+
+    // Descripción del ticket con todos los productos
+    const productosDescripcion = productosEncontrados
+      .map(p => `${p.productoNombre}${p.cantidad > 1 ? ` x${p.cantidad}` : ''}`)
+      .join(', ')
+
     await Ticket.create({
       numeroTicket: `TK-${ordenNumero}`,
       ordenId: nuevaOrden._id,
@@ -97,13 +180,14 @@ export async function crearOrdenWhatsApp(req, res) {
       descripcion: [
         `Orden creada desde WhatsApp (ElevenLabs).`,
         `Cliente: ${nombre} | Tel: ${telefono}`,
-        `Producto: ${itemTitle}${cantidad > 1 ? ` x${cantidad}` : ''}`,
+        `Productos: ${productosDescripcion}`,
         `Barrio/Ciudad: ${ciudadFinal || 'No indicado'}`,
         `Dirección: ${direccion || 'No indicada'}`,
       ].join(' | '),
       creador: 'whatsapp-bot',
     })
-    console.log(`[WA] ✓ Orden ${ordenNumero} | ${nombre} | ${producto.nombre}${talla ? ` T:${talla}` : ''}${color ? ` C:${color}` : ''}`)
+
+    console.log(`[WA] ✓ Orden ${ordenNumero} | ${nombre} | ${productosDescripcion}`)
     return res.json({ ok: true, orden_numero: ordenNumero, link_pago: linkPago, mensaje: `Orden #${ordenNumero} registrada. Link de pago: ${linkPago}` })
   } catch (err) {
     console.error('[WA] Error creando orden:', err.message)

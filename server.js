@@ -95,14 +95,12 @@ app.get("/store-config/dominio", resolverPorDominio)
 app.get("/store-config/info", infoTienda)
 app.get("/", (_req, res) => res.send("🚀 Backend Miracle funcionando"))
 
-// Webhook de conversaciones (usa webhookTenantMiddleware que identifica tenant por agent_id del body)
+// Webhooks de ElevenLabs (identifican tenant por agent_id del body, NO por X-Tenant-Slug)
 app.post("/whatsapp/webhook/conversation", webhookTenantMiddleware, recibirWebhookConversacion)
+app.post("/whatsapp/crear-orden", webhookTenantMiddleware, crearOrdenWhatsApp)
 
 // Todas las demás rutas resuelven el tenant por X-Tenant-Slug header
 app.use(tenantMiddleware)
-
-// Webhook de crear orden (necesita tenant middleware + X-Tenant-Slug)
-app.post("/whatsapp/crear-orden", crearOrdenWhatsApp)
 
 app.use("/store-config", storeConfigRoutes)
 app.use("/auth", authRoutes)
