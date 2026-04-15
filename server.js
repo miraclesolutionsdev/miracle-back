@@ -94,12 +94,12 @@ app.get("/store-config/dominio", resolverPorDominio)
 app.get("/store-config/info", infoTienda)
 app.get("/", (_req, res) => res.send("🚀 Backend Miracle funcionando"))
 
-// Webhooks públicos de WhatsApp (con x-api-key, sin tenant middleware)
-app.post("/whatsapp/crear-orden", crearOrdenWhatsApp)
-app.post("/whatsapp/webhook/conversation", recibirWebhookConversacion)
-
 // Todas las demás rutas resuelven el tenant por X-Tenant-Slug header
 app.use(tenantMiddleware)
+
+// Webhooks públicos de WhatsApp (CON tenant middleware pero sin requireAuth)
+app.post("/whatsapp/crear-orden", crearOrdenWhatsApp)
+app.post("/whatsapp/webhook/conversation", recibirWebhookConversacion)
 
 app.use("/store-config", storeConfigRoutes)
 app.use("/auth", authRoutes)
