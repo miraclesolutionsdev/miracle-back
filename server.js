@@ -12,6 +12,7 @@ import cookieParser from "cookie-parser"
 import helmet from "helmet"
 import rateLimit from "express-rate-limit"
 import { tenantMiddleware } from "./src/middleware/tenant.middleware.js"
+import { webhookTenantMiddleware } from "./src/middleware/webhookTenant.middleware.js"
 import authRoutes from "./src/routes/auth.routes.js"
 import { loginGlobal } from "./src/controllers/auth.controller.js"
 import storeConfigRoutes from "./src/routes/storeConfig.routes.js"
@@ -94,12 +95,14 @@ app.get("/store-config/dominio", resolverPorDominio)
 app.get("/store-config/info", infoTienda)
 app.get("/", (_req, res) => res.send("🚀 Backend Miracle funcionando"))
 
+// Webhook de conversaciones (usa webhookTenantMiddleware que identifica tenant por agent_id del body)
+app.post("/whatsapp/webhook/conversation", webhookTenantMiddleware, recibirWebhookConversacion)
+
 // Todas las demás rutas resuelven el tenant por X-Tenant-Slug header
 app.use(tenantMiddleware)
 
-// Webhooks públicos de WhatsApp (CON tenant middleware pero sin requireAuth)
+// Webhook de crear orden (necesita tenant middleware + X-Tenant-Slug)
 app.post("/whatsapp/crear-orden", crearOrdenWhatsApp)
-app.post("/whatsapp/webhook/conversation", recibirWebhookConversacion)
 
 app.use("/store-config", storeConfigRoutes)
 app.use("/auth", authRoutes)

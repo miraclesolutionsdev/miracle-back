@@ -198,23 +198,8 @@ export async function recibirWebhookConversacion(req, res) {
       return res.status(400).json({ error: 'Faltan datos requeridos: conversation_id, agent_id' })
     }
 
-    // Determinar a qué tenant pertenece este agente
-    const { getRegistryDb } = await import('../config/connectionManager.js')
-    const { getTenantModel } = await import('../models/tenant.model.js')
-    const { getDb } = await import('../config/connectionManager.js')
-
-    const registryDb = await getRegistryDb()
-    const Tenant = getTenantModel(registryDb)
-    const tenant = await Tenant.findOne({ elevenLabsAgentId: agent_id }).lean()
-
-    if (!tenant) {
-      console.warn(`[EL Webhook] No se encontró tenant para agentId: ${agent_id}`)
-      return res.status(404).json({ error: `No se encontró tenant para el agente ${agent_id}` })
-    }
-
-    // Conectar a la DB del tenant
-    const tenantDb = await getDb(tenant.dbName)
-    const LeadWhatsapp = getLeadWhatsappModel(tenantDb)
+    // req.db ya fue inyectado por webhookTenantMiddleware
+    const LeadWhatsapp = getLeadWhatsappModel(req.db)
 
     // Extraer número de teléfono si está en metadata o transcript
     let phoneNumber = metadata?.phone_number || metadata?.caller_number || null
@@ -250,9 +235,9 @@ export async function recibirWebhookConversacion(req, res) {
       { upsert: true, new: true }
     )
 
-    console.log(`[EL Webhook] ✓ Lead guardado: ${conversation_id} | Tenant: ${tenant.slug} | Tel: ${phoneNumber || 'N/A'}`)
+    console.log(`[EL Webhook] ✓ Lead guardado: ${conversation_id} | Tenant: ${req.tenantSlug} | Tel: ${phoneNumber || 'N/A'}`)
 
-    return res.json({ ok: true, lead_id: lead._id, tenant: tenant.slug })
+    return res.json({ ok: true, lead_id: lead._id, tenant: req.tenantSlug })
   } catch (err) {
     console.error('[EL Webhook] Error procesando webhook:', err.message)
     return res.status(500).json({ error: 'Error interno al procesar webhook.' })
