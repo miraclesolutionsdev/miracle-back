@@ -28,47 +28,38 @@ export async function crearOrdenWhatsApp(req, res) {
   if (!validarApiKey(req, res)) return
   try {
     const {
-      nombre, telefono,
-      ciudad = '', ciudadBarrio = '', direccion = '',
+      nombre,
+      telefono,
+      ciudadBarrio = '',
+      direccion = '',
       productos: productosArray,
-      // Compatibilidad con formato antiguo (un solo producto)
-      producto: productoNombre,
-      cantidad: cantidadRaw = 1,
-      talla = '', color = '',
     } = req.body
 
+    // Log para debugging
+    console.log('[WA] Body recibido:', JSON.stringify(req.body, null, 2))
+
+    // Validar datos requeridos
     if (!nombre || !telefono) {
       return res.status(400).json({ error: 'Faltan datos requeridos: nombre, telefono' })
     }
 
-    // Determinar si viene array de productos o un solo producto (formato legacy)
-    let productosParaProcesar = []
+    if (!productosArray || !Array.isArray(productosArray) || productosArray.length === 0) {
+      return res.status(400).json({ error: 'Debe especificar al menos un producto en el array productos[]' })
+    }
 
-    if (productosArray && Array.isArray(productosArray) && productosArray.length > 0) {
-      // Formato nuevo: array de productos (puede ser strings o objetos)
-      productosParaProcesar = productosArray.map(p => {
-        // Si es string tipo "PRODUCTO, CANTIDAD"
-        if (typeof p === 'string') {
-          const [nombre, cantidadStr] = p.split(',').map(s => s.trim())
-          return {
-            nombre: nombre || '',
-            cantidad: Math.max(1, Math.min(99, parseInt(cantidadStr) || 1))
-          }
-        }
-        // Si es objeto {nombre, cantidad}
-        return {
-          nombre: p.nombre || p.producto || '',
-          cantidad: Math.max(1, Math.min(99, parseInt(p.cantidad) || 1))
-        }
-      }).filter(p => p.nombre) // Eliminar items vacíos
-    } else if (productoNombre) {
-      // Formato legacy: un solo producto
-      productosParaProcesar = [{
-        nombre: productoNombre,
-        cantidad: Math.max(1, Math.min(99, parseInt(cantidadRaw) || 1))
-      }]
-    } else {
-      return res.status(400).json({ error: 'Debe especificar al menos un producto (productos[] o producto)' })
+    // Procesar array de productos (formato: [{nombre, cantidad}, ...])
+    const productosParaProcesar = productosArray.map(p => {
+      if (!p || typeof p !== 'object') {
+        return null
+      }
+      return {
+        nombre: (p.nombre || '').toString().trim(),
+        cantidad: Math.max(1, Math.min(99, parseInt(p.cantidad) || 1))
+      }
+    }).filter(p => p && p.nombre) // Eliminar items vacíos o inválidos
+
+    if (productosParaProcesar.length === 0) {
+      return res.status(400).json({ error: 'No se encontraron productos válidos en el array. Formato: [{nombre: "PRODUCTO", cantidad: 1}, ...]' })
     }
 
     const Producto = getProductoModel(req.db)
@@ -78,6 +69,12 @@ export async function crearOrdenWhatsApp(req, res) {
     let totalMonto = 0
 
     for (const item of productosParaProcesar) {
+      // Validar que item.nombre sea string válido
+      if (!item.nombre || typeof item.nombre !== 'string') {
+        console.error('[WA] Item inválido:', JSON.stringify(item))
+        return res.status(400).json({ error: `Producto inválido en la lista. Formato esperado: "PRODUCTO, CANTIDAD"` })
+      }
+
       const producto = await Producto.findOne({
         nombre: { $regex: item.nombre.trim(), $options: 'i' },
         estado: 'activo',
@@ -99,7 +96,8 @@ export async function crearOrdenWhatsApp(req, res) {
       })
     }
 
-    const ciudadFinal = ciudadBarrio || ciudad
+    // ciudadBarrio ya viene completo (ej: "Cali - Cristobal Colon")
+    const ciudadFinal = ciudadBarrio
     const FRONT_URL = process.env.FRONT_URL || 'https://www.miraclesolutions.com.co'
 
     // Crear items para MercadoPago
@@ -164,8 +162,6 @@ export async function crearOrdenWhatsApp(req, res) {
       origen: 'whatsapp',
       metodoPago: 'mercadopago',
       preferenceId,
-      talla,
-      color,
     })
 
     // Descripción del ticket con todos los productos
