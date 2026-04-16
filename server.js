@@ -95,11 +95,19 @@ app.get("/store-config/dominio", resolverPorDominio)
 app.get("/store-config/info", infoTienda)
 app.get("/", (_req, res) => res.send("🚀 Backend Miracle funcionando"))
 
-// Webhooks de ElevenLabs (identifican tenant por agent_id del body, NO por X-Tenant-Slug)
-app.post("/whatsapp/webhook/conversation", webhookTenantMiddleware, recibirWebhookConversacion)
-app.post("/whatsapp/crear-orden", webhookTenantMiddleware, crearOrdenWhatsApp)
+// ══════════════════════════════════════════════════════════════
+// WEBHOOKS PÚBLICOS (antes del tenantMiddleware global)
+// ══════════════════════════════════════════════════════════════
 
-// Todas las demás rutas resuelven el tenant por X-Tenant-Slug header
+// Webhook de conversaciones: ElevenLabs envía agent_id en el body automáticamente
+app.post("/whatsapp/webhook/conversation", webhookTenantMiddleware, recibirWebhookConversacion)
+
+// API crear orden: Tool de ElevenLabs envía X-Tenant-Slug en headers
+app.post("/whatsapp/crear-orden", tenantMiddleware, crearOrdenWhatsApp)
+
+// ══════════════════════════════════════════════════════════════
+// RUTAS PROTEGIDAS (requieren X-Tenant-Slug header)
+// ══════════════════════════════════════════════════════════════
 app.use(tenantMiddleware)
 
 app.use("/store-config", storeConfigRoutes)

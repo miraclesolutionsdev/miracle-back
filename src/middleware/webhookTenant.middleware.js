@@ -7,10 +7,12 @@ import { getTenantModel } from '../models/tenant.model.js'
  */
 export async function webhookTenantMiddleware(req, res, next) {
   try {
-    const { agent_id } = req.body
+    // Intentar obtener agent_id del body o del header X-Agent-Id
+    const agent_id = req.body.agent_id || req.headers['x-agent-id']
 
     if (!agent_id) {
-      return res.status(400).json({ error: 'Falta agent_id en el payload' })
+      console.error('[Webhook] Falta agent_id. Body:', JSON.stringify(req.body), 'Headers:', JSON.stringify(req.headers))
+      return res.status(400).json({ error: 'Falta agent_id en el payload o header X-Agent-Id' })
     }
 
     // Buscar tenant por agent_id
