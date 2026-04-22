@@ -9,6 +9,9 @@ const productoSchema = new mongoose.Schema(
     },
     descripcion: { type: String, trim: true, default: "" },
     precio: { type: Number, required: true, min: 0 },
+    precioDistribuidor: { type: Number, default: 0, min: 0 },
+    aumentoPrecio: { type: Number, default: 0, min: 0 },
+    utilidad: { type: Number, default: 30, min: 0, max: 100 },
     tipo: {
       type: String,
       enum: { values: ["servicio", "producto"], message: "Tipo no válido" },

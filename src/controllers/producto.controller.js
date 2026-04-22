@@ -27,6 +27,9 @@ function toProductoResponse(doc) {
     nombre: o.nombre,
     descripcion: o.descripcion ?? "",
     precio: o.precio ?? 0,
+    precioDistribuidor: o.precioDistribuidor ?? 0,
+    aumentoPrecio: o.aumentoPrecio ?? 0,
+    utilidad: o.utilidad ?? 30,
     tipo: o.tipo ?? "servicio",
     estado: o.estado ?? "activo",
     imagenes,
@@ -88,7 +91,7 @@ export async function obtenerUno(req, res) {
 
 export async function crear(req, res) {
   try {
-    const { nombre, descripcion, precio, tipo, estado, stock, whatsapp, usos, caracteristicas, categoria, subcategoria } = req.body
+    const { nombre, descripcion, precio, precioDistribuidor, aumentoPrecio, utilidad, tipo, estado, stock, whatsapp, usos, caracteristicas, categoria, subcategoria } = req.body
     const files = req.files || []
     if (!nombre) {
       return res.status(400).json({ error: "Faltan campos requeridos: nombre" })
@@ -110,6 +113,9 @@ export async function crear(req, res) {
       nombre: nom,
       descripcion: descripcion ?? "",
       precio: parsePrecio(precio),
+      precioDistribuidor: parsePrecio(precioDistribuidor),
+      aumentoPrecio: parsePrecio(aumentoPrecio),
+      utilidad: Math.min(100, Math.max(0, Number(utilidad) || 30)),
       tipo: tipo === "producto" ? "producto" : "servicio",
       estado: estado === "inactivo" ? "inactivo" : "activo",
       imagenes,
@@ -149,7 +155,7 @@ export async function actualizar(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
-    const { nombre, descripcion, precio, tipo, estado, stock, whatsapp, usos, caracteristicas, categoria, subcategoria } = req.body
+    const { nombre, descripcion, precio, precioDistribuidor, aumentoPrecio, utilidad, tipo, estado, stock, whatsapp, usos, caracteristicas, categoria, subcategoria } = req.body
     const files = req.files || []
     const update = {}
     const Producto = getProductoModel(req.db)
@@ -165,6 +171,9 @@ export async function actualizar(req, res) {
       }
     }
     if (precio !== undefined) update.precio = parsePrecio(precio)
+    if (precioDistribuidor !== undefined) update.precioDistribuidor = parsePrecio(precioDistribuidor)
+    if (aumentoPrecio !== undefined) update.aumentoPrecio = parsePrecio(aumentoPrecio)
+    if (utilidad !== undefined) update.utilidad = Math.min(100, Math.max(0, Number(utilidad) || 30))
     if (tipo !== undefined && ["servicio", "producto"].includes(tipo)) update.tipo = tipo
     if (estado !== undefined && ["activo", "inactivo"].includes(estado)) update.estado = estado
     if (files.length > 0) {
