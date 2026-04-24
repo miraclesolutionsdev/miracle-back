@@ -29,6 +29,7 @@ import whatsappRoutes from "./src/routes/whatsapp.routes.js"
 import registerRoutes from "./src/routes/register.routes.js"
 import notificationRoutes from "./src/routes/notification.routes.js"
 import { crearOrdenWhatsApp, recibirWebhookConversacion } from "./src/controllers/whatsapp.controller.js"
+import { recibirWebhook } from "./src/controllers/pago.controller.js"
 
 const app = express()
 app.set("trust proxy", 1)
@@ -88,11 +89,21 @@ app.use(
   })
 )
 
+// Middleware condicional: aplica tenantMiddleware solo si hay header o JWT
+async function optionalTenantMiddleware(req, res, next) {
+  const hasHeader = !!req.headers["x-tenant-slug"]
+  const hasToken = !!(req.cookies?.miracle_token || req.headers.authorization?.startsWith("Bearer "))
+  if (hasHeader || hasToken) {
+    return tenantMiddleware(req, res, next)
+  }
+  next()
+}
+
 // Rutas públicas — sin tenant middleware
 app.use("/register", registerRoutes)
 app.post("/auth/login-global", loginGlobal)
 app.get("/store-config/dominio", resolverPorDominio)
-app.get("/store-config/info", infoTienda)
+app.get("/store-config/info", optionalTenantMiddleware, infoTienda)
 app.get("/", (_req, res) => res.send("🚀 Backend Miracle funcionando"))
 
 // ══════════════════════════════════════════════════════════════
@@ -104,6 +115,9 @@ app.post("/whatsapp/webhook/conversation", webhookTenantMiddleware, recibirWebho
 
 // API crear orden: Tool de ElevenLabs envía X-Tenant-Slug en headers
 app.post("/whatsapp/crear-orden", tenantMiddleware, crearOrdenWhatsApp)
+
+// Webhook de MercadoPago: necesita su propio middleware para extraer tenant de metadata
+app.post("/pagos/webhook", webhookTenantMiddleware, recibirWebhook)
 
 // ══════════════════════════════════════════════════════════════
 // RUTAS PROTEGIDAS (requieren X-Tenant-Slug header)

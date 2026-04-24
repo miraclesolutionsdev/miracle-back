@@ -206,6 +206,34 @@ export async function actualizar(req, res) {
   }
 }
 
+export async function actualizarPrecio(req, res) {
+  try {
+    const { id } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "ID de producto no válido" })
+    }
+    const { precioDistribuidor, aumentoPrecio, utilidad } = req.body
+    const Producto = getProductoModel(req.db)
+
+    const update = {}
+    if (precioDistribuidor !== undefined) update.precioDistribuidor = parsePrecio(precioDistribuidor)
+    if (aumentoPrecio !== undefined) update.aumentoPrecio = parsePrecio(aumentoPrecio)
+    if (utilidad !== undefined) update.utilidad = Math.min(100, Math.max(0, Number(utilidad) || 30))
+
+    // Calcular precio cliente automáticamente
+    if (precioDistribuidor !== undefined && aumentoPrecio !== undefined) {
+      update.precio = parsePrecio(precioDistribuidor) + parsePrecio(aumentoPrecio)
+    }
+
+    const producto = await Producto.findByIdAndUpdate(id, update, { new: true })
+    if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
+
+    res.json(toProductoResponse(producto))
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+}
+
 export async function inactivar(req, res) {
   try {
     const { id } = req.params

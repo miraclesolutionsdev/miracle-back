@@ -4,9 +4,10 @@ import { getTenantModel } from '../models/tenant.model.js'
 /**
  * GET /store-config/info?slug=venompharmacol
  * Público. Retorna nombre e info básica del tenant para mostrar en la tienda.
+ * Si está autenticado, usa req.tenantSlug del middleware.
  */
 export async function infoTienda(req, res) {
-  const slug = (req.query.slug || '').trim().toLowerCase()
+  const slug = req.tenantSlug || (req.query.slug || '').trim().toLowerCase()
   if (!slug) return res.status(400).json({ error: 'Falta el parámetro slug.' })
   try {
     const registryDb = await getRegistryDb()

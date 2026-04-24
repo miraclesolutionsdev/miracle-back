@@ -8,6 +8,7 @@ import {
   actualizarPago,
   crearTicketManual,
   cancelarOrden,
+  obtenerGanancias,
 } from '../controllers/orden.controller.js'
 import { requireAuth } from '../middleware/auth.middleware.js'
 
@@ -17,6 +18,7 @@ const router = Router()
 router.use(requireAuth)
 
 router.get('/', listarOrdenes)
+router.get('/ganancias/resumen', obtenerGanancias)
 router.get('/:id', obtenerOrden)
 router.post('/', crearOrden)
 router.patch('/:id/estado', actualizarEstadoOrden)

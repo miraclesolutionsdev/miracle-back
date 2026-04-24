@@ -6,6 +6,7 @@ import {
   obtenerUno,
   crear,
   actualizar,
+  actualizarPrecio,
   inactivar,
   obtenerImagen,
   eliminarImagen,
@@ -22,6 +23,7 @@ router.get("/:id", obtenerUno)
 // Escritura protegida (solo usuarios autenticados)
 router.post("/", requireAuth, upload.array("imagenes", 10), crear)
 router.put("/:id", requireAuth, upload.array("imagenes", 10), actualizar)
+router.patch("/:id/precio", requireAuth, actualizarPrecio)
 router.patch("/:id/inactivar", requireAuth, inactivar)
 router.delete("/:id/imagenes/:index", requireAuth, eliminarImagen)
 

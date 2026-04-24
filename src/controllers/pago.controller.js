@@ -130,8 +130,14 @@ export async function recibirWebhook(req, res) {
       return res.sendStatus(200)
     }
     const paymentId = Number(data.id)
-    const paymentApi = new Payment(client)
-    const pago = await paymentApi.get({ id: paymentId })
+
+    // Reutilizar el pago si ya lo fetch el middleware (optimización)
+    let pago = req.mercadoPagoPago
+    if (!pago) {
+      const paymentApi = new Payment(client)
+      pago = await paymentApi.get({ id: paymentId })
+    }
+
     console.log(`[MP] Webhook recibido — PaymentID: ${paymentId}, Status: ${pago.status}`)
     if (pago.status !== 'approved') return res.sendStatus(200)
 
