@@ -59,6 +59,7 @@ export async function crearPreferencia(req, res) {
   try {
     const {
       productoId,
+      productos: productosArray,
       cantidad: cantidadRaw = 1,
       clienteNombre,
       clienteCelular,
@@ -70,52 +71,126 @@ export async function crearPreferencia(req, res) {
       envioTorre,
       envioApto,
     } = req.body
-    if (!productoId) return res.status(400).json({ error: 'productoId es requerido' })
-    const cantidad = Math.max(1, Math.min(99, parseInt(cantidadRaw) || 1))
+
     const Producto = getProductoModel(req.db)
-    const producto = await Producto.findById(productoId)
-    if (!producto) return res.status(404).json({ error: 'Producto no encontrado' })
-    if (producto.estado !== 'activo') return res.status(400).json({ error: 'Producto no disponible' })
-    if (producto.tipo === 'producto' && producto.stock < cantidad) {
-      return res.status(400).json({ error: `Solo hay ${producto.stock} unidades disponibles` })
-    }
     const FRONT_URL = process.env.FRONT_URL
+    let mpItems = []
+    let productosMetadata = []
+    let whatsappNumber = null
+
+    // Detectar modo: single o multiple
+    const isMultiple = !!productosArray
+
+    if (isMultiple) {
+      // Modo carrito: procesar array de productos
+      if (!productosArray || productosArray.length === 0) {
+        return res.status(400).json({ error: 'productos es requerido' })
+      }
+
+      for (const item of productosArray) {
+        const { productoId: pid, cantidad: cant } = item
+        if (!pid || !cant) {
+          return res.status(400).json({ error: 'Cada producto debe tener productoId y cantidad' })
+        }
+
+        const cantidad = Math.max(1, Math.min(99, parseInt(cant) || 1))
+        const producto = await Producto.findById(pid)
+
+        if (!producto) {
+          return res.status(404).json({ error: `Producto no encontrado: ${pid}` })
+        }
+        if (producto.estado !== 'activo') {
+          return res.status(400).json({ error: `Producto "${producto.nombre}" no está disponible` })
+        }
+        if (producto.tipo === 'producto' && producto.stock < cantidad) {
+          return res.status(400).json({
+            error: `Stock insuficiente para "${producto.nombre}". Disponible: ${producto.stock}, solicitado: ${cantidad}`,
+          })
+        }
+
+        mpItems.push({
+          id: producto._id.toString(),
+          title: producto.nombre,
+          description: producto.descripcion || producto.nombre,
+          quantity: cantidad,
+          unit_price: Number(producto.precio),
+          currency_id: 'COP',
+        })
+
+        productosMetadata.push({
+          productoId: producto._id.toString(),
+          cantidad,
+          precioUnitario: Number(producto.precio),
+        })
+
+        // Guardar whatsapp del primer producto (para contacto post-pago)
+        if (!whatsappNumber && producto.whatsapp) {
+          whatsappNumber = producto.whatsapp
+        }
+      }
+    } else {
+      // Modo single: backward compatible
+      if (!productoId) return res.status(400).json({ error: 'productoId es requerido' })
+
+      const cantidad = Math.max(1, Math.min(99, parseInt(cantidadRaw) || 1))
+      const producto = await Producto.findById(productoId)
+
+      if (!producto) return res.status(404).json({ error: 'Producto no encontrado' })
+      if (producto.estado !== 'activo') return res.status(400).json({ error: 'Producto no disponible' })
+      if (producto.tipo === 'producto' && producto.stock < cantidad) {
+        return res.status(400).json({ error: `Solo hay ${producto.stock} unidades disponibles` })
+      }
+
+      mpItems = [
+        {
+          id: producto._id.toString(),
+          title: producto.nombre,
+          description: producto.descripcion || producto.nombre,
+          quantity: cantidad,
+          unit_price: Number(producto.precio),
+          currency_id: 'COP',
+        },
+      ]
+
+      productosMetadata = [
+        {
+          productoId: producto._id.toString(),
+          cantidad,
+          precioUnitario: Number(producto.precio),
+        },
+      ]
+
+      whatsappNumber = producto.whatsapp
+    }
+
+    // Crear preferencia en MercadoPago
     const preference = new Preference(client)
     const result = await preference.create({
       body: {
-        items: [
-          {
-            id:          producto._id.toString(),
-            title:       producto.nombre,
-            description: producto.descripcion || producto.nombre,
-            quantity:    cantidad,
-            unit_price:  Number(producto.precio),
-            currency_id: 'COP',
-          },
-        ],
+        items: mpItems,
         back_urls: {
-          success: `${FRONT_URL}/pago/exitoso${producto.whatsapp ? `?wa=${encodeURIComponent(producto.whatsapp)}` : ''}`,
-          failure: `${FRONT_URL}/pago/fallido`,
-          pending: `${FRONT_URL}/pago/pendiente`,
+          success: `${FRONT_URL}/pago/exitoso?slug=${req.tenantSlug}${whatsappNumber ? `&wa=${encodeURIComponent(whatsappNumber)}` : ''}`,
+          failure: `${FRONT_URL}/pago/fallido?slug=${req.tenantSlug}`,
+          pending: `${FRONT_URL}/pago/pendiente?slug=${req.tenantSlug}`,
         },
         ...(FRONT_URL.startsWith('https') && { auto_return: 'approved' }),
         statement_descriptor: 'Miracle Solutions',
         metadata: {
-          productoId:     producto._id.toString(),
-          tenantSlug:     req.tenantSlug,
-          cantidad,
-          clienteNombre:  clienteNombre  || '',
+          tenantSlug: req.tenantSlug,
+          productos: JSON.stringify(productosMetadata),
+          clienteNombre: clienteNombre || '',
           clienteCelular: clienteCelular || '',
-          clienteEmail:   clienteEmail   || '',
-          clienteCedula:  clienteCedula  || '',
+          clienteEmail: clienteEmail || '',
+          clienteCedula: clienteCedula || '',
           envioDireccion: envioDireccion || '',
-          envioBarrio:    envioBarrio    || '',
-          envioUnidad:    envioUnidad    || '',
-          envioTorre:     envioTorre     || '',
-          envioApto:      envioApto      || '',
+          envioBarrio: envioBarrio || '',
+          envioUnidad: envioUnidad || '',
+          envioTorre: envioTorre || '',
+          envioApto: envioApto || '',
         },
       },
     })
+
     res.json({ init_point: result.init_point })
   } catch (err) {
     console.error('[MP] Error al crear preferencia:', err)
@@ -141,11 +216,27 @@ export async function recibirWebhook(req, res) {
     console.log(`[MP] Webhook recibido — PaymentID: ${paymentId}, Status: ${pago.status}`)
     if (pago.status !== 'approved') return res.sendStatus(200)
 
-    const productoId = pago.metadata?.producto_id || pago.metadata?.productoId
-    const cantidad   = Math.max(1, Number(pago.metadata?.cantidad) || 1)
-    if (!productoId) {
-      console.error('[MP] No se encontró productoId en metadata del pago:', paymentId)
-      return res.sendStatus(200)
+    const m = pago.metadata || {}
+
+    // Parsear productos: puede venir como JSON string o como formato legacy
+    let productosData = []
+    if (m.productos) {
+      try {
+        productosData = JSON.parse(m.productos)
+      } catch {
+        console.warn('[MP] Error parseando metadata.productos, usando formato legacy')
+      }
+    }
+
+    // Fallback a formato legacy (single producto)
+    if (productosData.length === 0) {
+      const productoId = m.producto_id || m.productoId
+      const cantidad = Math.max(1, Number(m.cantidad) || 1)
+      if (!productoId) {
+        console.error('[MP] No se encontró productoId ni productos en metadata del pago:', paymentId)
+        return res.sendStatus(200)
+      }
+      productosData = [{ productoId, cantidad, precioUnitario: Number(pago.transaction_amount) / cantidad }]
     }
 
     const Producto = getProductoModel(req.db)
@@ -153,64 +244,82 @@ export async function recibirWebhook(req, res) {
     const Ticket   = getTicketModel(req.db)
     const Cliente  = getClienteModel(req.db)
 
-    const producto = await Producto.findById(productoId)
-    if (!producto) {
-      console.error('[MP] Producto no encontrado:', productoId)
-      return res.sendStatus(200)
-    }
-
+    // Verificar si ya existe una orden con este preference_id (caso WhatsApp)
+    console.log('[MP] Buscando orden existente con preferenceId:', pago.preference_id)
     const ordenExistente = pago.preference_id
       ? await Orden.findOne({ preferenceId: pago.preference_id })
       : null
 
     if (ordenExistente) {
+      console.log('[MP] Orden existente encontrada:', ordenExistente.ordenNumero, '- Actualizando a pagado')
+      // Caso WhatsApp: orden ya existe, solo actualizar estado de pago
       await Orden.findByIdAndUpdate(ordenExistente._id, {
-        estadoPago: 'pagado', estadoPreparacion: 'no_preparado', estado: 'procesando', pagoId: String(paymentId),
+        estadoPago: 'pagado',
+        estadoPreparacion: 'no_preparado',
+        estado: 'procesando',
+        pagoId: String(paymentId),
       })
+      console.log('[MP] Orden actualizada exitosamente')
+
+      const productosNombres = ordenExistente.productos.map((p) => p.productoNombre).join(', ')
       await Ticket.create({
         numeroTicket: `TK-${ordenExistente.ordenNumero}-PAGO`,
-        ordenId:      ordenExistente._id,
-        tipo:         'pago_recibido',
+        ordenId: ordenExistente._id,
+        tipo: 'pago_recibido',
         descripcion: [
           `Pago aprobado vía MercadoPago (WhatsApp).`,
           `Cliente: ${ordenExistente.cliente.nombre}`,
-          `Producto: ${ordenExistente.productos[0]?.productoNombre}`,
+          `Productos: ${productosNombres}`,
           `Monto: $${Number(pago.transaction_amount).toLocaleString('es-CO')}`,
           `ID de pago MP: ${paymentId}`,
         ].join(' | '),
         creador: 'sistema-mercadopago',
       })
-      if (producto.tipo === 'producto') {
-        await Producto.findOneAndUpdate(
-          { _id: productoId, tipo: 'producto', stock: { $gte: cantidad } },
-          { $inc: { stock: -cantidad } }
-        )
-      }
-    } else {
-      const payerFirst = (pago.payer?.first_name || pago.additional_info?.payer?.first_name || '').trim()
-      const payerLast  = (pago.payer?.last_name  || pago.additional_info?.payer?.last_name  || '').trim()
-      const payerEmail = (pago.payer?.email || '').trim()
-      const m = pago.metadata || {}
-      const clienteNombre  = (m.cliente_nombre  || m.clienteNombre  || [payerFirst, payerLast].filter(Boolean).join(' ') || payerEmail.split('@')[0]).trim()
-      // Solo se usa el celular del formulario (metadata). NO se usa payer.phone.number porque
-      // MercadoPago puede retornar la cédula del perfil MP del comprador en ese campo.
-      const clienteCelular = (m.cliente_celular || m.clienteCelular || '').trim()
-      const emailComprador = (m.cliente_email   || m.clienteEmail   || payerEmail || 'desconocido@nointent.com').trim()
-      const clienteCedula  = (m.cliente_cedula  || m.clienteCedula  || '').trim()
-      const envioDireccion = (m.envio_direccion || m.envioDireccion || '').trim()
-      const envioBarrio    = (m.envio_barrio    || m.envioBarrio    || '').trim()
-      const envioUnidad    = (m.envio_unidad    || m.envioUnidad    || '').trim()
-      const envioTorre     = (m.envio_torre     || m.envioTorre     || '').trim()
-      const envioApto      = (m.envio_apto      || m.envioApto      || '').trim()
 
+      // Decrementar stock de todos los productos
+      for (const item of ordenExistente.productos) {
+        const prod = await Producto.findById(item.productoId)
+        if (prod && prod.tipo === 'producto') {
+          console.log(`[MP] Decrementando stock de ${prod.nombre}: ${prod.stock} - ${item.cantidad}`)
+          await Producto.findOneAndUpdate(
+            { _id: item.productoId, tipo: 'producto', stock: { $gte: item.cantidad } },
+            { $inc: { stock: -item.cantidad } }
+          )
+        }
+      }
+      console.log('[MP] Webhook procesado exitosamente (caso WhatsApp)')
+    } else {
+      console.log('[MP] No se encontró orden existente, creando nueva orden (caso Web)')
+      // Caso Web: crear nueva orden con uno o múltiples productos
+      const payerFirst = (pago.payer?.first_name || pago.additional_info?.payer?.first_name || '').trim()
+      const payerLast = (pago.payer?.last_name || pago.additional_info?.payer?.last_name || '').trim()
+      const payerEmail = (pago.payer?.email || '').trim()
+
+      const clienteNombre = (
+        m.cliente_nombre ||
+        m.clienteNombre ||
+        [payerFirst, payerLast].filter(Boolean).join(' ') ||
+        payerEmail.split('@')[0]
+      ).trim()
+      const clienteCelular = (m.cliente_celular || m.clienteCelular || '').trim()
+      const emailComprador = (m.cliente_email || m.clienteEmail || payerEmail || 'desconocido@nointent.com').trim()
+      const clienteCedula = (m.cliente_cedula || m.clienteCedula || '').trim()
+      const envioDireccion = (m.envio_direccion || m.envioDireccion || '').trim()
+      const envioBarrio = (m.envio_barrio || m.envioBarrio || '').trim()
+      const envioUnidad = (m.envio_unidad || m.envioUnidad || '').trim()
+      const envioTorre = (m.envio_torre || m.envioTorre || '').trim()
+      const envioApto = (m.envio_apto || m.envioApto || '').trim()
+
+      // Crear o actualizar cliente
       const cliente = await Cliente.findOneAndUpdate(
         { email: emailComprador },
         {
           $set: {
-            nombreEmpresa: clienteNombre, whatsapp: clienteCelular,
-            ...(clienteCedula  && { cedulaNit: clienteCedula }),
+            nombreEmpresa: clienteNombre,
+            whatsapp: clienteCelular,
+            ...(clienteCedula && { cedulaNit: clienteCedula }),
             ...(envioDireccion && { direccion: envioDireccion }),
-            ...(envioBarrio    && { ciudadBarrio: envioBarrio }),
+            ...(envioBarrio && { ciudadBarrio: envioBarrio }),
             estado: 'activo',
           },
           $setOnInsert: { email: emailComprador },
@@ -218,48 +327,75 @@ export async function recibirWebhook(req, res) {
         { upsert: true, new: true }
       )
 
+      // Construir array de productos para la orden
+      const productosOrden = []
+      for (const item of productosData) {
+        const prod = await Producto.findById(item.productoId)
+        if (prod) {
+          productosOrden.push({
+            productoId: prod._id,
+            productoNombre: prod.nombre,
+            cantidad: item.cantidad,
+            precioUnitario: item.precioUnitario,
+            precioTotal: item.precioUnitario * item.cantidad,
+          })
+        }
+      }
+
+      if (productosOrden.length === 0) {
+        console.error('[MP] No se pudieron cargar productos para crear la orden')
+        return res.sendStatus(200)
+      }
+
+      // Crear orden
       const ordenNumero = await generarNumeroOrden(req.db)
       const nuevaOrden = await Orden.create({
         ordenNumero,
         clienteId: cliente._id,
-        cliente:   { nombre: clienteNombre, email: emailComprador, whatsapp: clienteCelular, cedula: clienteCedula },
-        envio:     { direccion: envioDireccion, barrio: envioBarrio, unidadResidencial: envioUnidad, torre: envioTorre, apto: envioApto },
-        productos: [{
-          productoId:     producto._id,
-          productoNombre: producto.nombre,
-          cantidad,
-          precioUnitario: Number(pago.transaction_amount ?? 0) / cantidad,
-          precioTotal:    Number(pago.transaction_amount ?? 0),
-        }],
-        totalMonto:        Number(pago.transaction_amount ?? 0),
-        estado:            'procesando',
-        estadoPago:        'pagado',
+        cliente: { nombre: clienteNombre, email: emailComprador, whatsapp: clienteCelular, cedula: clienteCedula },
+        envio: {
+          direccion: envioDireccion,
+          barrio: envioBarrio,
+          unidadResidencial: envioUnidad,
+          torre: envioTorre,
+          apto: envioApto,
+        },
+        productos: productosOrden,
+        totalMonto: Number(pago.transaction_amount ?? 0),
+        estado: 'procesando',
+        estadoPago: 'pagado',
         estadoPreparacion: 'no_preparado',
-        origen:            'web',
-        metodoPago:        'mercadopago',
-        pagoId:            String(paymentId),
-        preferenceId:      pago.preference_id || '',
+        origen: 'web',
+        metodoPago: 'mercadopago',
+        pagoId: String(paymentId),
+        preferenceId: pago.preference_id || '',
       })
 
+      // Crear ticket
+      const productosNombres = productosOrden.map((p) => `${p.productoNombre} x${p.cantidad}`).join(', ')
       await Ticket.create({
         numeroTicket: `TK-${ordenNumero}`,
-        ordenId:      nuevaOrden._id,
-        tipo:         'pago_recibido',
+        ordenId: nuevaOrden._id,
+        tipo: 'pago_recibido',
         descripcion: [
           `Pago aprobado vía MercadoPago.`,
           `Cliente: ${clienteNombre} (${emailComprador})`,
-          `Producto: ${producto.nombre}${cantidad > 1 ? ` x${cantidad}` : ''}`,
+          `Productos: ${productosNombres}`,
           `Monto: $${Number(pago.transaction_amount).toLocaleString('es-CO')}`,
           `ID de pago MP: ${paymentId}`,
         ].join(' | '),
         creador: 'sistema-mercadopago',
       })
 
-      if (producto.tipo === 'producto') {
-        await Producto.findOneAndUpdate(
-          { _id: productoId, tipo: 'producto', stock: { $gte: cantidad } },
-          { $inc: { stock: -cantidad } }
-        )
+      // Decrementar stock de todos los productos
+      for (const item of productosOrden) {
+        const prod = await Producto.findById(item.productoId)
+        if (prod && prod.tipo === 'producto') {
+          await Producto.findOneAndUpdate(
+            { _id: item.productoId, tipo: 'producto', stock: { $gte: item.cantidad } },
+            { $inc: { stock: -item.cantidad } }
+          )
+        }
       }
     }
   } catch (err) {

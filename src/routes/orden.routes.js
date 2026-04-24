@@ -9,6 +9,7 @@ import {
   crearTicketManual,
   cancelarOrden,
   obtenerGanancias,
+  verificarPago,
 } from '../controllers/orden.controller.js'
 import { requireAuth } from '../middleware/auth.middleware.js'
 
@@ -21,6 +22,7 @@ router.get('/', listarOrdenes)
 router.get('/ganancias/resumen', obtenerGanancias)
 router.get('/:id', obtenerOrden)
 router.post('/', crearOrden)
+router.post('/:id/verificar-pago', verificarPago)
 router.patch('/:id/estado', actualizarEstadoOrden)
 router.patch('/:id/preparacion', actualizarPreparacion)
 router.patch('/:id/pago', actualizarPago)

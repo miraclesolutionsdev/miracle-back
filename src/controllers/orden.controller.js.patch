@@ -1,0 +1,73 @@
+// Agregar esta función al final del archivo orden.controller.js
+
+import { MercadoPagoConfig, Payment } from 'mercadopago'
+
+const mpClient = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN,
+})
+
+/**
+ * POST /ordenes/:id/verificar-pago
+ * Verifica manualmente el estado de un pago en MercadoPago y actualiza la orden
+ */
+export async function verificarPago(req, res) {
+  try {
+    const { id } = req.params
+
+    const Orden = getOrdenModel(req.db)
+    const orden = await Orden.findById(id)
+
+    if (!orden) {
+      return res.status(404).json({ error: 'Orden no encontrada' })
+    }
+
+    if (!orden.pagoId) {
+      return res.status(400).json({ error: 'Esta orden no tiene un ID de pago de MercadoPago' })
+    }
+
+    // Consultar estado del pago en MercadoPago
+    const paymentApi = new Payment(mpClient)
+    const pago = await paymentApi.get({ id: Number(orden.pagoId) })
+
+    console.log(`[Verificar Pago] Orden ${orden.ordenNumero}, PaymentID: ${orden.pagoId}, Status MP: ${pago.status}`)
+
+    // Si el pago fue aprobado, actualizar la orden
+    if (pago.status === 'approved' && orden.estadoPago !== 'pagado') {
+      await Orden.findByIdAndUpdate(id, {
+        estadoPago: 'pagado',
+        estado: 'procesando',
+      })
+
+      // Decrementar stock si es necesario
+      const Producto = getProductoModel(req.db)
+      for (const item of orden.productos) {
+        const prod = await Producto.findById(item.productoId)
+        if (prod && prod.tipo === 'producto') {
+          await Producto.findOneAndUpdate(
+            { _id: item.productoId, tipo: 'producto', stock: { $gte: item.cantidad } },
+            { $inc: { stock: -item.cantidad } }
+          )
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: 'Pago verificado y orden actualizada',
+        estadoPago: 'pagado',
+        statusMercadoPago: pago.status
+      })
+    }
+
+    // Si no está aprobado, retornar estado actual
+    return res.json({
+      success: false,
+      message: `El pago está en estado: ${pago.status}`,
+      estadoPago: orden.estadoPago,
+      statusMercadoPago: pago.status
+    })
+
+  } catch (error) {
+    console.error('[Verificar Pago] Error:', error.message)
+    res.status(500).json({ error: 'Error al verificar el pago' })
+  }
+}

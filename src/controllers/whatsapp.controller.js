@@ -115,9 +115,9 @@ export async function crearOrdenWhatsApp(req, res) {
       body: {
         items: mpItems,
         back_urls: {
-          success: `${FRONT_URL}/pago/exitoso`,
-          failure: `${FRONT_URL}/pago/fallido`,
-          pending: `${FRONT_URL}/pago/pendiente`,
+          success: `${FRONT_URL}/pago/exitoso?slug=${req.tenantSlug}`,
+          failure: `${FRONT_URL}/pago/fallido?slug=${req.tenantSlug}`,
+          pending: `${FRONT_URL}/pago/pendiente?slug=${req.tenantSlug}`,
         },
         ...(FRONT_URL.startsWith('https') && { auto_return: 'approved' }),
         statement_descriptor: 'Miracle Solutions',
