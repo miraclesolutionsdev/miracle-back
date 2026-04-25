@@ -246,9 +246,20 @@ export async function recibirWebhook(req, res) {
 
     // Verificar si ya existe una orden con este preference_id (caso WhatsApp)
     console.log('[MP] Buscando orden existente con preferenceId:', pago.preference_id)
-    const ordenExistente = pago.preference_id
+    console.log('[MP] Tenant DB:', req.db ? req.db.name : 'NO DB')
+
+    let ordenExistente = pago.preference_id
       ? await Orden.findOne({ preferenceId: pago.preference_id })
       : null
+
+    // Si no se encontró, esperar 2 segundos y reintentar (por si el webhook llegó muy rápido)
+    if (!ordenExistente && pago.preference_id) {
+      console.log('[MP] Orden no encontrada, esperando 2s y reintentando...')
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      ordenExistente = await Orden.findOne({ preferenceId: pago.preference_id })
+    }
+
+    console.log('[MP] Resultado de búsqueda:', ordenExistente ? `Orden ${ordenExistente.ordenNumero} encontrada` : 'No encontrada')
 
     if (ordenExistente) {
       console.log('[MP] Orden existente encontrada:', ordenExistente.ordenNumero, '- Actualizando a pagado')
@@ -288,6 +299,7 @@ export async function recibirWebhook(req, res) {
         }
       }
       console.log('[MP] Webhook procesado exitosamente (caso WhatsApp)')
+      return res.sendStatus(200)
     } else {
       console.log('[MP] No se encontró orden existente, creando nueva orden (caso Web)')
       // Caso Web: crear nueva orden con uno o múltiples productos
