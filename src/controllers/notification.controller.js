@@ -53,6 +53,13 @@ function verifyToken(token) {
 
 // ─── Endpoint SSE ─────────────────────────────────────────────────────────────
 export function stream(req, res) {
+  // SSE no es compatible con Vercel (timeout de 300s). Deshabilitar en producción.
+  if (process.env.VERCEL || process.env.VERCEL_ENV) {
+    return res.status(501).json({
+      error: 'SSE no disponible en Vercel. Usa polling con GET /notificaciones'
+    })
+  }
+
   const token = resolveToken(req)
   if (!verifyToken(token)) {
     res.status(401).end()

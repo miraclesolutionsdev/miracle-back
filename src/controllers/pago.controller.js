@@ -5,6 +5,7 @@ import { getOrdenModel } from '../models/orden.model.js'
 import { getTicketModel } from '../models/ticket.model.js'
 import { getClienteModel } from '../models/cliente.model.js'
 import { generarNumeroOrden } from '../utils/ordenUtils.js'
+import { crearYEmitir } from './notification.controller.js'
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
@@ -298,6 +299,19 @@ export async function recibirWebhook(req, res) {
           )
         }
       }
+
+      // Crear notificación de pago recibido
+      await crearYEmitir(req.db, req.tenantDbName, {
+        tipo: 'pago_recibido',
+        titulo: '💰 Pago recibido',
+        mensaje: `Orden ${ordenExistente.ordenNumero} - ${ordenExistente.cliente.nombre} - $${Number(pago.transaction_amount).toLocaleString('es-CO')}`,
+        meta: {
+          ordenId: ordenExistente._id.toString(),
+          ordenNumero: ordenExistente.ordenNumero,
+          monto: Number(pago.transaction_amount),
+        },
+      })
+
       console.log('[MP] Webhook procesado exitosamente (caso WhatsApp)')
       return res.sendStatus(200)
     } else {
@@ -409,6 +423,18 @@ export async function recibirWebhook(req, res) {
           )
         }
       }
+
+      // Crear notificación de pago recibido
+      await crearYEmitir(req.db, req.tenantDbName, {
+        tipo: 'pago_recibido',
+        titulo: '💰 Pago recibido (Web)',
+        mensaje: `Orden ${ordenNumero} - ${clienteNombre} - $${Number(pago.transaction_amount).toLocaleString('es-CO')}`,
+        meta: {
+          ordenId: nuevaOrden._id.toString(),
+          ordenNumero: ordenNumero,
+          monto: Number(pago.transaction_amount),
+        },
+      })
     }
   } catch (err) {
     console.error('[MP] Error procesando webhook:', err.message, err.stack)

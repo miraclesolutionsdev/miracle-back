@@ -124,6 +124,11 @@ export async function crearOrdenWhatsApp(req, res) {
         metadata: {
           origen: 'whatsapp',
           tenantSlug: req.tenantSlug,
+          productos: JSON.stringify(productos.map(p => ({
+            productoId: p.productoId.toString(),
+            cantidad: p.cantidad,
+            precioUnitario: p.precioUnitario
+          }))),
           clienteNombre: nombre,
           clienteCelular: telefono,
           envioDireccion: direccion,
