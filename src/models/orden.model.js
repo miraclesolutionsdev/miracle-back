@@ -69,21 +69,28 @@ const ordenSchema = new mongoose.Schema(
       enum: ['web', 'whatsapp'],
       default: 'web',
     },
-    talla: { type: String, default: '' },
-    color: { type: String, default: '' },
     metodoPago: {
       type: String,
       enum: ['mercadopago', 'manual'],
       default: 'manual',
     },
+    // ID del pago en MercadoPago (payment.id) - se asigna cuando el pago es aprobado
     pagoId: {
       type: String,
       sparse: true,
       unique: true,
+      index: true,
     },
+    // ID de la preferencia de MercadoPago (preference.id) - opcional, solo para referencia
     preferenceId: {
       type: String,
+      default: '',
+    },
+    // External reference enviado a MercadoPago - usado para linkear webhook con orden
+    externalReference: {
+      type: String,
       sparse: true,
+      unique: true,
       index: true,
     },
     notas: {

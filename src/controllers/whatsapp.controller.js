@@ -1,10 +1,7 @@
 import { MercadoPagoConfig, Preference } from 'mercadopago'
 import { getProductoModel } from '../models/producto.model.js'
-import { getOrdenModel } from '../models/orden.model.js'
-import { getTicketModel } from '../models/ticket.model.js'
-import { getClienteModel } from '../models/cliente.model.js'
 import { getLeadWhatsappModel } from '../models/leadWhatsapp.model.js'
-import { generarNumeroOrden } from '../utils/ordenUtils.js'
+import { crearOrdenPendiente } from '../services/orden.service.js'
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
@@ -96,24 +93,34 @@ export async function crearOrdenWhatsApp(req, res) {
       })
     }
 
-    // ciudadBarrio ya viene completo (ej: "Cali - Cristobal Colon")
-    const ciudadFinal = ciudadBarrio
     const FRONT_URL = process.env.FRONT_URL || 'https://www.miraclesolutions.com.co'
 
+    // Crear orden pendiente en DB
+    const { ordenNumero } = await crearOrdenPendiente(req.db, {
+      tenantSlug: req.tenantSlug,
+      origen: 'whatsapp',
+      cliente: { nombre, whatsapp: telefono },
+      envio: { direccion, barrio: ciudadBarrio },
+      productos: productosEncontrados,
+      totalMonto,
+    })
+
     // Crear items para MercadoPago
-    const mpItems = productosEncontrados.map(p => ({
+    const mpItems = productosEncontrados.map((p) => ({
       id: p.productoId.toString(),
       title: p.productoNombre,
       description: p.productoNombre,
       quantity: p.cantidad,
       unit_price: p.precioUnitario,
-      currency_id: 'COP'
+      currency_id: 'COP',
     }))
 
+    // Crear preference en MercadoPago
     const preference = new Preference(client)
     const mpResult = await preference.create({
       body: {
         items: mpItems,
+        external_reference: ordenNumero,
         back_urls: {
           success: `${FRONT_URL}/pago/exitoso?slug=${req.tenantSlug}`,
           failure: `${FRONT_URL}/pago/fallido?slug=${req.tenantSlug}`,
@@ -122,74 +129,22 @@ export async function crearOrdenWhatsApp(req, res) {
         ...(FRONT_URL.startsWith('https') && { auto_return: 'approved' }),
         statement_descriptor: 'Miracle Solutions',
         metadata: {
-          origen: 'whatsapp',
           tenantSlug: req.tenantSlug,
-          productos: JSON.stringify(productosEncontrados.map(p => ({
-            productoId: p.productoId.toString(),
-            cantidad: p.cantidad,
-            precioUnitario: p.precioUnitario
-          }))),
-          clienteNombre: nombre,
-          clienteCelular: telefono,
-          envioDireccion: direccion,
-          envioBarrio: ciudadFinal,
+          ordenNumero,
+          origen: 'whatsapp',
         },
       },
     })
 
-    const preferenceId = mpResult.id
     const linkPago = mpResult.init_point
+    console.log(`[WA] ✓ Orden ${ordenNumero} creada | Link: ${linkPago}`)
 
-    const Cliente = getClienteModel(req.db)
-    const cliente = await Cliente.findOneAndUpdate(
-      { whatsapp: telefono },
-      {
-        $set: { nombreEmpresa: nombre, whatsapp: telefono, ...(ciudadFinal && { ciudadBarrio: ciudadFinal }), ...(direccion && { direccion }), estado: 'activo' },
-        $setOnInsert: { email: '' },
-      },
-      { upsert: true, new: true }
-    )
-
-    const ordenNumero = await generarNumeroOrden(req.db)
-    const Orden = getOrdenModel(req.db)
-    const Ticket = getTicketModel(req.db)
-
-    const nuevaOrden = await Orden.create({
-      ordenNumero,
-      clienteId: cliente._id,
-      cliente: { nombre, email: '', whatsapp: telefono, cedula: '' },
-      envio: { direccion, barrio: ciudadFinal },
-      productos: productosEncontrados,
-      totalMonto,
-      estado: 'pendiente',
-      estadoPago: 'no_pagado',
-      estadoPreparacion: 'no_preparado',
-      origen: 'whatsapp',
-      metodoPago: 'mercadopago',
-      preferenceId,
+    return res.json({
+      ok: true,
+      orden_numero: ordenNumero,
+      link_pago: linkPago,
+      mensaje: `Orden #${ordenNumero} registrada. Link de pago: ${linkPago}`,
     })
-
-    // Descripción del ticket con todos los productos
-    const productosDescripcion = productosEncontrados
-      .map(p => `${p.productoNombre}${p.cantidad > 1 ? ` x${p.cantidad}` : ''}`)
-      .join(', ')
-
-    await Ticket.create({
-      numeroTicket: `TK-${ordenNumero}`,
-      ordenId: nuevaOrden._id,
-      tipo: 'creacion',
-      descripcion: [
-        `Orden creada desde WhatsApp (ElevenLabs).`,
-        `Cliente: ${nombre} | Tel: ${telefono}`,
-        `Productos: ${productosDescripcion}`,
-        `Barrio/Ciudad: ${ciudadFinal || 'No indicado'}`,
-        `Dirección: ${direccion || 'No indicada'}`,
-      ].join(' | '),
-      creador: 'whatsapp-bot',
-    })
-
-    console.log(`[WA] ✓ Orden ${ordenNumero} | ${nombre} | ${productosDescripcion}`)
-    return res.json({ ok: true, orden_numero: ordenNumero, link_pago: linkPago, mensaje: `Orden #${ordenNumero} registrada. Link de pago: ${linkPago}` })
   } catch (err) {
     console.error('[WA] Error creando orden:', err.message)
     return res.status(500).json({ error: 'Error interno al crear la orden.' })

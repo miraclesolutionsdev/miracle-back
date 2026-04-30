@@ -46,6 +46,7 @@ export async function webhookTenantMiddleware(req, res, next) {
           console.warn(`[MP Webhook] No se encontró tenant para slug: ${tenantSlug}`)
           return res.status(404).json({ error: `No se encontró tenant ${tenantSlug}` })
         }
+        console.log(`[MP Webhook] ✓ Tenant encontrado: ${tenant.nombre} (slug: ${tenant.slug}, dbName: ${tenant.dbName})`)
       } catch (mpError) {
         console.error('[MP Webhook] Error obteniendo pago:', mpError.message)
         return res.status(500).json({ error: 'Error al obtener información del pago' })
@@ -56,11 +57,13 @@ export async function webhookTenantMiddleware(req, res, next) {
     }
 
     // Inyectar datos del tenant en req
+    console.log(`[Webhook Middleware] Conectando a DB: "${tenant.dbName}"`)
     req.db = await getDb(tenant.dbName)
     req.tenantSlug = tenant.slug
     req.tenantNombre = tenant.nombre
     req.tenantDbName = tenant.dbName
     req.elevenLabsAgentId = tenant.elevenLabsAgentId || null
+    console.log(`[Webhook Middleware] ✓ req.db conectado a: ${req.db.name}`)
 
     next()
   } catch (err) {
