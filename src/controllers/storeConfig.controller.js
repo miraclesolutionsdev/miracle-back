@@ -53,7 +53,7 @@ export async function resolverPorDominio(req, res) {
  */
 export async function guardarPlantilla(req, res) {
   const plantilla = (req.body.plantilla || '').trim().toLowerCase()
-  const validas = ['luxury', 'fitness', 'minimal', 'food', 'modern']
+  const validas = ['luxury', 'fitness', 'minimal', 'food', 'modern', 'exclusive']
   if (!validas.includes(plantilla)) {
     return res.status(400).json({ error: `Plantilla inválida. Opciones: ${validas.join(', ')}` })
   }

@@ -37,6 +37,8 @@ const productoSchema = new mongoose.Schema(
     whatsapp: { type: String, trim: true, default: "" },
     usos: { type: [String], default: [] },
     caracteristicas: { type: [String], default: [] },
+    especificaciones: { type: [String], default: [] },
+    incluye: { type: [String], default: [] },
   },
   { timestamps: true }
 )

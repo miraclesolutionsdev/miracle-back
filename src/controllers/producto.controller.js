@@ -39,6 +39,8 @@ function toProductoResponse(doc) {
     whatsapp: o.whatsapp ?? "",
     usos: Array.isArray(o.usos) ? o.usos : [],
     caracteristicas: Array.isArray(o.caracteristicas) ? o.caracteristicas : [],
+    especificaciones: Array.isArray(o.especificaciones) ? o.especificaciones : [],
+    incluye: Array.isArray(o.incluye) ? o.incluye : [],
     fechaCreacion: o.createdAt,
   }
 }
@@ -91,7 +93,7 @@ export async function obtenerUno(req, res) {
 
 export async function crear(req, res) {
   try {
-    const { nombre, descripcion, precio, precioDistribuidor, aumentoPrecio, utilidad, tipo, estado, stock, whatsapp, usos, caracteristicas, categoria, subcategoria } = req.body
+    const { nombre, descripcion, precio, precioDistribuidor, aumentoPrecio, utilidad, tipo, estado, stock, whatsapp, usos, caracteristicas, especificaciones, incluye, categoria, subcategoria } = req.body
     const files = req.files || []
     if (!nombre) {
       return res.status(400).json({ error: "Faltan campos requeridos: nombre" })
@@ -125,6 +127,8 @@ export async function crear(req, res) {
       whatsapp: (whatsapp ?? "").trim(),
       usos: parseJsonArray(usos),
       caracteristicas: parseJsonArray(caracteristicas),
+      especificaciones: parseJsonArray(especificaciones),
+      incluye: parseJsonArray(incluye),
     })
     if (files.length > 0) {
       const urlsSubidas = []
@@ -155,7 +159,7 @@ export async function actualizar(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
-    const { nombre, descripcion, precio, precioDistribuidor, aumentoPrecio, utilidad, tipo, estado, stock, whatsapp, usos, caracteristicas, categoria, subcategoria } = req.body
+    const { nombre, descripcion, precio, precioDistribuidor, aumentoPrecio, utilidad, tipo, estado, stock, whatsapp, usos, caracteristicas, especificaciones, incluye, categoria, subcategoria } = req.body
     const files = req.files || []
     const update = {}
     const Producto = getProductoModel(req.db)
@@ -198,6 +202,8 @@ export async function actualizar(req, res) {
     if (stock !== undefined) update.stock = Math.max(0, Number(stock) || 0)
     if (usos !== undefined) update.usos = parseJsonArray(usos)
     if (caracteristicas !== undefined) update.caracteristicas = parseJsonArray(caracteristicas)
+    if (especificaciones !== undefined) update.especificaciones = parseJsonArray(especificaciones)
+    if (incluye !== undefined) update.incluye = parseJsonArray(incluye)
     const producto = await Producto.findByIdAndUpdate(id, update, { new: true })
     if (!producto) return res.status(404).json({ error: "Producto no encontrado" })
     res.json(toProductoResponse(producto))
