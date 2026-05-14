@@ -30,13 +30,12 @@ function toProductoResponse(doc) {
     precioDistribuidor: o.precioDistribuidor ?? 0,
     aumentoPrecio: o.aumentoPrecio ?? 0,
     utilidad: o.utilidad ?? 30,
-    tipo: o.tipo ?? "servicio",
+    tipo: o.tipo ?? "producto",
     estado: o.estado ?? "activo",
     imagenes,
     categoria: o.categoria ?? "",
     subcategoria: o.subcategoria ?? "",
     stock: o.stock ?? 0,
-    whatsapp: o.whatsapp ?? "",
     usos: Array.isArray(o.usos) ? o.usos : [],
     caracteristicas: Array.isArray(o.caracteristicas) ? o.caracteristicas : [],
     especificaciones: Array.isArray(o.especificaciones) ? o.especificaciones : [],
@@ -93,7 +92,7 @@ export async function obtenerUno(req, res) {
 
 export async function crear(req, res) {
   try {
-    const { nombre, descripcion, precio, precioDistribuidor, aumentoPrecio, utilidad, tipo, estado, stock, whatsapp, usos, caracteristicas, especificaciones, incluye, categoria, subcategoria } = req.body
+    const { nombre, descripcion, precio, precioDistribuidor, aumentoPrecio, utilidad, tipo, estado, stock, usos, caracteristicas, especificaciones, incluye, categoria, subcategoria } = req.body
     const files = req.files || []
     if (!nombre) {
       return res.status(400).json({ error: "Faltan campos requeridos: nombre" })
@@ -117,14 +116,13 @@ export async function crear(req, res) {
       precio: parsePrecio(precio),
       precioDistribuidor: parsePrecio(precioDistribuidor),
       aumentoPrecio: parsePrecio(aumentoPrecio),
-      utilidad: Math.min(100, Math.max(0, Number(utilidad) || 30)),
+      utilidad: Number.isNaN(Number(utilidad)) ? 30 : Math.min(100, Math.max(0, Number(utilidad))),
       tipo: tipo === "producto" ? "producto" : "servicio",
       estado: estado === "inactivo" ? "inactivo" : "activo",
       imagenes,
       categoria: (categoria ?? "").trim(),
       subcategoria: (subcategoria ?? "").trim(),
       stock: Math.max(0, Number(stock) || 0),
-      whatsapp: (whatsapp ?? "").trim(),
       usos: parseJsonArray(usos),
       caracteristicas: parseJsonArray(caracteristicas),
       especificaciones: parseJsonArray(especificaciones),
@@ -159,7 +157,7 @@ export async function actualizar(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
-    const { nombre, descripcion, precio, precioDistribuidor, aumentoPrecio, utilidad, tipo, estado, stock, whatsapp, usos, caracteristicas, especificaciones, incluye, categoria, subcategoria } = req.body
+    const { nombre, descripcion, precio, precioDistribuidor, aumentoPrecio, utilidad, tipo, estado, stock, usos, caracteristicas, especificaciones, incluye, categoria, subcategoria } = req.body
     const files = req.files || []
     const update = {}
     const Producto = getProductoModel(req.db)
@@ -167,7 +165,6 @@ export async function actualizar(req, res) {
     if (categoria !== undefined) update.categoria = (categoria ?? "").trim()
     if (subcategoria !== undefined) update.subcategoria = (subcategoria ?? "").trim()
     if (descripcion !== undefined) update.descripcion = descripcion
-    if (whatsapp !== undefined) update.whatsapp = (whatsapp ?? "").trim()
     if (update.nombre !== undefined) {
       const otro = await Producto.findOne({ nombre: update.nombre, _id: { $ne: id } })
       if (otro) {
@@ -177,7 +174,7 @@ export async function actualizar(req, res) {
     if (precio !== undefined) update.precio = parsePrecio(precio)
     if (precioDistribuidor !== undefined) update.precioDistribuidor = parsePrecio(precioDistribuidor)
     if (aumentoPrecio !== undefined) update.aumentoPrecio = parsePrecio(aumentoPrecio)
-    if (utilidad !== undefined) update.utilidad = Math.min(100, Math.max(0, Number(utilidad) || 30))
+    if (utilidad !== undefined) update.utilidad = Number.isNaN(Number(utilidad)) ? 30 : Math.min(100, Math.max(0, Number(utilidad)))
     if (tipo !== undefined && ["servicio", "producto"].includes(tipo)) update.tipo = tipo
     if (estado !== undefined && ["activo", "inactivo"].includes(estado)) update.estado = estado
     if (files.length > 0) {
@@ -224,7 +221,7 @@ export async function actualizarPrecio(req, res) {
     const update = {}
     if (precioDistribuidor !== undefined) update.precioDistribuidor = parsePrecio(precioDistribuidor)
     if (aumentoPrecio !== undefined) update.aumentoPrecio = parsePrecio(aumentoPrecio)
-    if (utilidad !== undefined) update.utilidad = Math.min(100, Math.max(0, Number(utilidad) || 30))
+    if (utilidad !== undefined) update.utilidad = Number.isNaN(Number(utilidad)) ? 30 : Math.min(100, Math.max(0, Number(utilidad)))
 
     // Calcular precio cliente automáticamente
     if (precioDistribuidor !== undefined && aumentoPrecio !== undefined) {

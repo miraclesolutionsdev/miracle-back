@@ -15,7 +15,7 @@ const productoSchema = new mongoose.Schema(
     tipo: {
       type: String,
       enum: { values: ["servicio", "producto"], message: "Tipo no válido" },
-      default: "servicio",
+      default: "producto",
     },
     estado: {
       type: String,
@@ -34,7 +34,6 @@ const productoSchema = new mongoose.Schema(
     categoria: { type: String, trim: true, default: "" },
     subcategoria: { type: String, trim: true, default: "" },
     stock: { type: Number, default: 0, min: 0 },
-    whatsapp: { type: String, trim: true, default: "" },
     usos: { type: [String], default: [] },
     caracteristicas: { type: [String], default: [] },
     especificaciones: { type: [String], default: [] },

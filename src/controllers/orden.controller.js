@@ -382,7 +382,7 @@ export async function obtenerGanancias(req, res) {
 
         if (producto) {
           // Calcular utilidad basada en el porcentaje configurado
-          const utilidadPorcentaje = producto.utilidad || 30
+          const utilidadPorcentaje = Number.isNaN(Number(producto.utilidad)) ? 30 : Number(producto.utilidad)
           const montoUtilidad = (precioCliente * utilidadPorcentaje) / 100
           const montoGananciaNeta = precioCliente - montoUtilidad
 
