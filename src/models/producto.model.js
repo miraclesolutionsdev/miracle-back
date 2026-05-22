@@ -33,6 +33,7 @@ const productoSchema = new mongoose.Schema(
     },
     categoria: { type: String, trim: true, default: "" },
     subcategoria: { type: String, trim: true, default: "" },
+    descuento: { type: Number, default: 0, min: 0, max: 100 },
     stock: { type: Number, default: 0, min: 0 },
     usos: { type: [String], default: [] },
     caracteristicas: { type: [String], default: [] },

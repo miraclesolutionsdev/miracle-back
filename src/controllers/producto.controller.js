@@ -35,6 +35,7 @@ function toProductoResponse(doc) {
     imagenes,
     categoria: o.categoria ?? "",
     subcategoria: o.subcategoria ?? "",
+    descuento: o.descuento ?? 0,
     stock: o.stock ?? 0,
     usos: Array.isArray(o.usos) ? o.usos : [],
     caracteristicas: Array.isArray(o.caracteristicas) ? o.caracteristicas : [],
@@ -122,6 +123,7 @@ export async function crear(req, res) {
       imagenes,
       categoria: (categoria ?? "").trim(),
       subcategoria: (subcategoria ?? "").trim(),
+      descuento: Math.min(100, Math.max(0, Number(descuento) || 0)),
       stock: Math.max(0, Number(stock) || 0),
       usos: parseJsonArray(usos),
       caracteristicas: parseJsonArray(caracteristicas),
@@ -157,7 +159,7 @@ export async function actualizar(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
-    const { nombre, descripcion, precio, precioDistribuidor, aumentoPrecio, utilidad, tipo, estado, stock, usos, caracteristicas, especificaciones, incluye, categoria, subcategoria } = req.body
+    const { nombre, descripcion, precio, precioDistribuidor, aumentoPrecio, utilidad, descuento, tipo, estado, stock, usos, caracteristicas, especificaciones, incluye, categoria, subcategoria } = req.body
     const files = req.files || []
     const update = {}
     const Producto = getProductoModel(req.db)
@@ -175,6 +177,7 @@ export async function actualizar(req, res) {
     if (precioDistribuidor !== undefined) update.precioDistribuidor = parsePrecio(precioDistribuidor)
     if (aumentoPrecio !== undefined) update.aumentoPrecio = parsePrecio(aumentoPrecio)
     if (utilidad !== undefined) update.utilidad = Number.isNaN(Number(utilidad)) ? 30 : Math.min(100, Math.max(0, Number(utilidad)))
+    if (descuento !== undefined) update.descuento = Math.min(100, Math.max(0, Number(descuento) || 0))
     if (tipo !== undefined && ["servicio", "producto"].includes(tipo)) update.tipo = tipo
     if (estado !== undefined && ["activo", "inactivo"].includes(estado)) update.estado = estado
     if (files.length > 0) {
@@ -215,13 +218,14 @@ export async function actualizarPrecio(req, res) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID de producto no válido" })
     }
-    const { precioDistribuidor, aumentoPrecio, utilidad } = req.body
+    const { precioDistribuidor, aumentoPrecio, utilidad, descuento } = req.body
     const Producto = getProductoModel(req.db)
 
     const update = {}
     if (precioDistribuidor !== undefined) update.precioDistribuidor = parsePrecio(precioDistribuidor)
     if (aumentoPrecio !== undefined) update.aumentoPrecio = parsePrecio(aumentoPrecio)
     if (utilidad !== undefined) update.utilidad = Number.isNaN(Number(utilidad)) ? 30 : Math.min(100, Math.max(0, Number(utilidad)))
+    if (descuento !== undefined) update.descuento = Math.min(100, Math.max(0, Number(descuento) || 0))
 
     // Calcular precio cliente automáticamente
     if (precioDistribuidor !== undefined && aumentoPrecio !== undefined) {
