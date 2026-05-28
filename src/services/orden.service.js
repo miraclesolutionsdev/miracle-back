@@ -154,14 +154,12 @@ export async function aprobarOrden(db, tenantDbName, ordenId, paymentId, pago) {
 async function decrementarStock(db, productos) {
   const Producto = getProductoModel(db)
 
-  for (const item of productos) {
-    const prod = await Producto.findById(item.productoId)
-    if (prod && prod.tipo === 'producto') {
-      console.log(`[Stock] Decrementando ${prod.nombre}: ${prod.stock} - ${item.cantidad}`)
-      await Producto.findOneAndUpdate(
+  await Promise.all(
+    productos.map((item) =>
+      Producto.findOneAndUpdate(
         { _id: item.productoId, tipo: 'producto', stock: { $gte: item.cantidad } },
         { $inc: { stock: -item.cantidad } }
       )
-    }
-  }
+    )
+  )
 }

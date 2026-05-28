@@ -63,6 +63,7 @@ export async function webhookTenantMiddleware(req, res, next) {
     req.tenantNombre = tenant.nombre
     req.tenantDbName = tenant.dbName
     req.elevenLabsAgentId = tenant.elevenLabsAgentId || null
+    req.tenantDominio = tenant.dominios?.[0] || null
     console.log(`[Webhook Middleware] ✓ req.db conectado a: ${req.db.name}`)
 
     next()

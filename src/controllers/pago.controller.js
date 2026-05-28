@@ -29,7 +29,9 @@ export async function crearPreferencia(req, res) {
     } = req.body
 
     const Producto = getProductoModel(req.db)
-    const FRONT_URL = process.env.FRONT_URL
+    const FRONT_URL = req.tenantDominio
+      ? `https://${req.tenantDominio}`
+      : process.env.FRONT_URL
     const isMultiple = !!productosArray
 
     // Validar y procesar productos
@@ -149,7 +151,7 @@ export async function crearPreferencia(req, res) {
           pending: `${FRONT_URL}/pago/pendiente?slug=${req.tenantSlug}`,
         },
         ...(FRONT_URL.startsWith('https') && { auto_return: 'approved' }),
-        statement_descriptor: 'Miracle Solutions',
+        statement_descriptor: (req.tenantNombre || 'Miracle Solutions').slice(0, 22),
         metadata: {
           tenantSlug: req.tenantSlug,
           ordenNumero,

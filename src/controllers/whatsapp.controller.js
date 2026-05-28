@@ -93,7 +93,9 @@ export async function crearOrdenWhatsApp(req, res) {
       })
     }
 
-    const FRONT_URL = process.env.FRONT_URL || 'https://www.miraclesolutions.com.co'
+    const FRONT_URL = req.tenantDominio
+      ? `https://${req.tenantDominio}`
+      : process.env.FRONT_URL
 
     // Crear orden pendiente en DB
     const { ordenNumero } = await crearOrdenPendiente(req.db, {
@@ -127,7 +129,7 @@ export async function crearOrdenWhatsApp(req, res) {
           pending: `${FRONT_URL}/pago/pendiente?slug=${req.tenantSlug}`,
         },
         ...(FRONT_URL.startsWith('https') && { auto_return: 'approved' }),
-        statement_descriptor: 'Miracle Solutions',
+        statement_descriptor: (req.tenantNombre || 'Miracle Solutions').slice(0, 22),
         metadata: {
           tenantSlug: req.tenantSlug,
           ordenNumero,

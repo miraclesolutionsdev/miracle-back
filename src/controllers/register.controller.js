@@ -42,7 +42,7 @@ export async function registrarTenant(req, res) {
     }
 
     const dbName = `${slug}db`
-    await Tenant.create({ slug, dbName, nombre: nombreTienda.trim(), dominios: [] })
+    await Tenant.create({ slug, dbName, nombre: nombreTienda.trim(), dominios: [], plantilla: 'luxury' })
 
     const tenantDb = await getDb(dbName)
     const User = getUserModel(tenantDb)

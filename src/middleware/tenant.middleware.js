@@ -63,6 +63,7 @@ export async function tenantMiddleware(req, res, next) {
     req.tenantNombre = tenant.nombre
     req.tenantDbName = tenant.dbName
     req.elevenLabsAgentId = tenant.elevenLabsAgentId || null
+    req.tenantDominio = tenant.dominios?.[0] || null
 
     next()
   } catch (err) {
