@@ -28,7 +28,7 @@ import ordenRoutes from "./src/routes/orden.routes.js"
 import whatsappRoutes from "./src/routes/whatsapp.routes.js"
 import registerRoutes from "./src/routes/register.routes.js"
 import notificationRoutes from "./src/routes/notification.routes.js"
-import { crearOrdenWhatsApp, recibirWebhookConversacion } from "./src/controllers/whatsapp.controller.js"
+import { crearOrdenWhatsApp, recibirWebhookConversacion, obtenerCatalogoWhatsapp } from "./src/controllers/whatsapp.controller.js"
 import { recibirWebhook } from "./src/controllers/pago.controller.js"
 
 const app = express()
@@ -115,6 +115,9 @@ app.post("/whatsapp/webhook/conversation", webhookTenantMiddleware, recibirWebho
 
 // API crear orden: Tool de ElevenLabs envía X-Tenant-Slug en headers
 app.post("/whatsapp/crear-orden", tenantMiddleware, crearOrdenWhatsApp)
+
+// Catálogo público para Tool Calling de ElevenLabs: slug va en la URL
+app.get("/whatsapp/catalogo/:slug", obtenerCatalogoWhatsapp)
 
 // Webhook de MercadoPago: necesita su propio middleware para extraer tenant de metadata
 app.post("/pagos/webhook", webhookTenantMiddleware, recibirWebhook)

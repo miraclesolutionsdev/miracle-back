@@ -2,6 +2,8 @@ import { MercadoPagoConfig, Preference } from 'mercadopago'
 import { getProductoModel } from '../models/producto.model.js'
 import { getLeadWhatsappModel } from '../models/leadWhatsapp.model.js'
 import { crearOrdenPendiente } from '../services/orden.service.js'
+import { getDb, getRegistryDb } from '../config/connectionManager.js'
+import { getTenantModel } from '../models/tenant.model.js'
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
@@ -19,6 +21,40 @@ function validarApiKey(req, res) {
     return false
   }
   return true
+}
+
+export async function obtenerCatalogoWhatsapp(req, res) {
+  if (!validarApiKey(req, res)) return
+  try {
+    const slug = req.params.slug?.trim().toLowerCase()
+    if (!slug) return res.status(400).json({ error: 'Falta el slug del tenant.' })
+
+    const registryDb = await getRegistryDb()
+    const Tenant = getTenantModel(registryDb)
+    const tenant = await Tenant.findOne({ slug }).lean()
+    if (!tenant) return res.status(404).json({ error: `Tenant "${slug}" no encontrado.` })
+
+    const db = await getDb(tenant.dbName)
+    const Producto = getProductoModel(db)
+    const productos = await Producto.find({ estado: 'activo' })
+      .select('nombre descripcion precio categoria subcategoria')
+      .sort({ nombre: 1 })
+      .lean()
+
+    return res.json({
+      catalogo: productos.map(p => ({
+        nombre: p.nombre,
+        precio: p.precio,
+        categoria: p.categoria || '',
+        subcategoria: p.subcategoria || '',
+        descripcion: p.descripcion || '',
+      })),
+      total: productos.length,
+    })
+  } catch (err) {
+    console.error('[WA Catálogo] Error:', err.message)
+    return res.status(500).json({ error: 'Error interno al obtener el catálogo.' })
+  }
 }
 
 export async function crearOrdenWhatsApp(req, res) {
