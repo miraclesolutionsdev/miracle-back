@@ -37,7 +37,7 @@ export async function obtenerCatalogoWhatsapp(req, res) {
     const db = await getDb(tenant.dbName)
     const Producto = getProductoModel(db)
     const productos = await Producto.find({ estado: 'activo' })
-      .select('nombre descripcion precio categoria subcategoria')
+      .select('nombre descripcion precio categoria subcategoria usos caracteristicas especificaciones incluye descuento stock')
       .sort({ nombre: 1 })
       .lean()
 
@@ -45,9 +45,15 @@ export async function obtenerCatalogoWhatsapp(req, res) {
       catalogo: productos.map(p => ({
         nombre: p.nombre,
         precio: p.precio,
+        descuento: p.descuento || 0,
         categoria: p.categoria || '',
         subcategoria: p.subcategoria || '',
         descripcion: p.descripcion || '',
+        usos: p.usos || [],
+        caracteristicas: p.caracteristicas || [],
+        especificaciones: p.especificaciones || [],
+        incluye: p.incluye || [],
+        stock: p.stock || 0,
       })),
       total: productos.length,
     })
