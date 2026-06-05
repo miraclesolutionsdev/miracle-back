@@ -12,11 +12,8 @@ import cookieParser from "cookie-parser"
 import helmet from "helmet"
 import rateLimit from "express-rate-limit"
 import { tenantMiddleware } from "./src/middleware/tenant.middleware.js"
-import { webhookTenantMiddleware } from "./src/middleware/webhookTenant.middleware.js"
 import authRoutes from "./src/routes/auth.routes.js"
-import { loginGlobal } from "./src/controllers/auth.controller.js"
 import storeConfigRoutes from "./src/routes/storeConfig.routes.js"
-import { resolverPorDominio, infoTienda } from "./src/controllers/storeConfig.controller.js"
 import userRoutes from "./src/routes/user.routes.js"
 import clienteRoutes from "./src/routes/cliente.routes.js"
 import productoRoutes from "./src/routes/producto.routes.js"
@@ -28,8 +25,7 @@ import ordenRoutes from "./src/routes/orden.routes.js"
 import whatsappRoutes from "./src/routes/whatsapp.routes.js"
 import registerRoutes from "./src/routes/register.routes.js"
 import notificationRoutes from "./src/routes/notification.routes.js"
-import { crearOrdenWhatsApp, recibirWebhookConversacion, obtenerCatalogoWhatsapp } from "./src/controllers/whatsapp.controller.js"
-import { recibirWebhook } from "./src/controllers/pago.controller.js"
+import articuloRoutes from "./src/routes/articulo.routes.js"
 
 const app = express()
 app.set("trust proxy", 1)
@@ -89,56 +85,38 @@ app.use(
   })
 )
 
-// Middleware condicional: aplica tenantMiddleware solo si hay header o JWT
-async function optionalTenantMiddleware(req, res, next) {
-  const hasHeader = !!req.headers["x-tenant-slug"]
-  const hasToken = !!(req.cookies?.miracle_token || req.headers.authorization?.startsWith("Bearer "))
-  if (hasHeader || hasToken) {
-    return tenantMiddleware(req, res, next)
-  }
-  next()
-}
-
-// Rutas públicas — sin tenant middleware
+// ══════════════════════════════════════════════════════════════
+// RUTAS PÚBLICAS — sin tenantMiddleware global
+// ══════════════════════════════════════════════════════════════
 app.use("/register", registerRoutes)
-app.post("/auth/login-global", loginGlobal)
-app.get("/store-config/dominio", resolverPorDominio)
-app.get("/store-config/info", optionalTenantMiddleware, infoTienda)
+
+// login-global y store-config/dominio no necesitan tenant
+app.use("/auth", authRoutes)
+app.use("/store-config", storeConfigRoutes)
+
 app.get("/", (_req, res) => res.send("🚀 Backend Miracle funcionando"))
 
 // ══════════════════════════════════════════════════════════════
-// WEBHOOKS PÚBLICOS (antes del tenantMiddleware global)
+// WEBHOOKS Y RUTAS PÚBLICAS DE WHATSAPP / PAGOS
+// Usan su propio middleware de tenant — van ANTES del global
 // ══════════════════════════════════════════════════════════════
-
-// Webhook de conversaciones: ElevenLabs envía agent_id en el body automáticamente
-app.post("/whatsapp/webhook/conversation", webhookTenantMiddleware, recibirWebhookConversacion)
-
-// API crear orden: Tool de ElevenLabs envía X-Tenant-Slug en headers
-app.post("/whatsapp/crear-orden", tenantMiddleware, crearOrdenWhatsApp)
-
-// Catálogo público para Tool Calling de ElevenLabs: slug va en la URL
-app.get("/whatsapp/catalogo/:slug", obtenerCatalogoWhatsapp)
-
-// Webhook de MercadoPago: necesita su propio middleware para extraer tenant de metadata
-app.post("/pagos/webhook", webhookTenantMiddleware, recibirWebhook)
+app.use("/whatsapp", whatsappRoutes)
+app.use("/pagos", pagoRoutes)
 
 // ══════════════════════════════════════════════════════════════
-// RUTAS PROTEGIDAS (requieren X-Tenant-Slug header)
+// RUTAS PROTEGIDAS — tenantMiddleware global aplicado aquí
 // ══════════════════════════════════════════════════════════════
 app.use(tenantMiddleware)
 
-app.use("/store-config", storeConfigRoutes)
-app.use("/auth", authRoutes)
 app.use("/users", userRoutes)
 app.use("/clientes", clienteRoutes)
 app.use("/productos", productoRoutes)
 app.use("/audiovisual", audiovisualRoutes)
 app.use("/campanas", campanaRoutes)
 app.use("/ia", iaRoutes)
-app.use("/pagos", pagoRoutes)
 app.use("/ordenes", ordenRoutes)
-app.use("/whatsapp", whatsappRoutes)
 app.use("/notificaciones", notificationRoutes)
+app.use("/articulos", articuloRoutes)
 
 const PORT = process.env.PORT || 3000
 if (process.env.VERCEL !== "1") {

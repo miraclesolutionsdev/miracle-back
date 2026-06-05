@@ -2,6 +2,7 @@ import { getProductoModel } from "../models/producto.model.js"
 import mongoose from "mongoose"
 import { subirImagenEvitandoDuplicado, eliminarImagenPorUrl } from "../services/s3.service.js"
 import { crearYEmitir } from "./notification.controller.js"
+import { toProductoResponse } from "../utils/responseFormatters.js"
 
 function parsePrecio(val) {
   if (typeof val === "number" && !Number.isNaN(val)) return Math.max(0, val)
@@ -11,38 +12,6 @@ function parsePrecio(val) {
     return Number.isNaN(num) ? 0 : Math.max(0, num)
   }
   return 0
-}
-
-function toProductoResponse(doc) {
-  if (!doc) return null
-  const o = doc.toObject ? doc.toObject() : doc
-  const id = o._id?.toString()
-  const imagenesRaw = Array.isArray(o.imagenes) ? o.imagenes : []
-  const imagenes = imagenesRaw.map((img) => {
-    if (img?.url) return { url: img.url, contentType: img.contentType || "image/jpeg" }
-    return null
-  }).filter(Boolean)
-  return {
-    id,
-    nombre: o.nombre,
-    descripcion: o.descripcion ?? "",
-    precio: o.precio ?? 0,
-    precioDistribuidor: o.precioDistribuidor ?? 0,
-    aumentoPrecio: o.aumentoPrecio ?? 0,
-    utilidad: o.utilidad ?? 30,
-    tipo: o.tipo ?? "producto",
-    estado: o.estado ?? "activo",
-    imagenes,
-    categoria: o.categoria ?? "",
-    subcategoria: o.subcategoria ?? "",
-    descuento: o.descuento ?? 0,
-    stock: o.stock ?? 0,
-    usos: Array.isArray(o.usos) ? o.usos : [],
-    caracteristicas: Array.isArray(o.caracteristicas) ? o.caracteristicas : [],
-    especificaciones: Array.isArray(o.especificaciones) ? o.especificaciones : [],
-    incluye: Array.isArray(o.incluye) ? o.incluye : [],
-    fechaCreacion: o.createdAt,
-  }
 }
 
 function parseJsonArray(val) {

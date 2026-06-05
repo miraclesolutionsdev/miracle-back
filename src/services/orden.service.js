@@ -3,7 +3,7 @@ import { getTicketModel } from '../models/ticket.model.js'
 import { getClienteModel } from '../models/cliente.model.js'
 import { getProductoModel } from '../models/producto.model.js'
 import { generarNumeroOrden } from '../utils/ordenUtils.js'
-import { crearYEmitir } from '../controllers/notification.controller.js'
+import { crearYEmitir } from './notification.service.js'
 
 /**
  * Crea una orden pendiente de pago en la base de datos.
@@ -151,6 +151,82 @@ export async function aprobarOrden(db, tenantDbName, ordenId, paymentId, pago) {
 /**
  * Decrementa el stock de productos físicos después de un pago aprobado.
  */
+/**
+ * Calcula ganancias, utilidad y detalle por producto de las órdenes completadas.
+ * @param {object} db - Conexión a la DB del tenant
+ * @param {{ desde?: string, hasta?: string }} filtroFechas
+ * @returns {{ resumen, detalleProductos }}
+ */
+export async function calcularGanancias(db, { desde, hasta } = {}) {
+  const Orden = getOrdenModel(db)
+  const Producto = getProductoModel(db)
+
+  const filtro = { estadoPago: 'pagado', estadoPreparacion: 'preparado' }
+  if (desde || hasta) {
+    filtro.createdAt = {}
+    if (desde) filtro.createdAt.$gte = new Date(desde)
+    if (hasta) {
+      const fechaHasta = new Date(hasta)
+      fechaHasta.setHours(23, 59, 59, 999)
+      filtro.createdAt.$lte = fechaHasta
+    }
+  }
+
+  const ordenes = await Orden.find(filtro).lean()
+
+  let totalVendido = 0
+  let totalUtilidad = 0
+  let totalGananciaNeta = 0
+  const detalleProductos = {}
+
+  for (const orden of ordenes) {
+    for (const item of orden.productos) {
+      const producto = await Producto.findById(item.productoId).lean()
+      const precioCliente = item.precioUnitario || 0
+      const cantidad = item.cantidad || 1
+      const subtotalVenta = precioCliente * cantidad
+
+      totalVendido += subtotalVenta
+
+      if (producto) {
+        const utilidadPorcentaje = Number.isNaN(Number(producto.utilidad)) ? 30 : Number(producto.utilidad)
+        const montoUtilidad = (precioCliente * utilidadPorcentaje) / 100
+        const montoGananciaNeta = precioCliente - montoUtilidad
+
+        totalUtilidad += montoUtilidad * cantidad
+        totalGananciaNeta += montoGananciaNeta * cantidad
+
+        const key = producto._id.toString()
+        if (!detalleProductos[key]) {
+          detalleProductos[key] = {
+            productoId: key,
+            nombre: producto.nombre,
+            cantidadVendida: 0,
+            totalVendido: 0,
+            totalUtilidad: 0,
+            totalGananciaNeta: 0,
+            utilidadPorcentaje,
+          }
+        }
+        detalleProductos[key].cantidadVendida += cantidad
+        detalleProductos[key].totalVendido += subtotalVenta
+        detalleProductos[key].totalUtilidad += montoUtilidad * cantidad
+        detalleProductos[key].totalGananciaNeta += montoGananciaNeta * cantidad
+      }
+    }
+  }
+
+  return {
+    resumen: {
+      totalVendido: Math.round(totalVendido),
+      totalUtilidad: Math.round(totalUtilidad),
+      totalGananciaNeta: Math.round(totalGananciaNeta),
+      cantidadOrdenes: ordenes.length,
+    },
+    detalleProductos: Object.values(detalleProductos),
+  }
+}
+
 async function decrementarStock(db, productos) {
   const Producto = getProductoModel(db)
 

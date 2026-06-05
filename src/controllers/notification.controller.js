@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken'
 import { getNotificationModel } from '../models/notification.model.js'
 import { sseService } from '../services/sse.service.js'
+export { crearYEmitir } from '../services/notification.service.js'
 
 const JWT_SECRET = process.env.JWT_SECRET
 
@@ -13,20 +14,6 @@ function formatNotif(n) {
     leida: n.leida,
     meta: n.meta ?? {},
     createdAt: n.createdAt,
-  }
-}
-
-/**
- * Crea una notificación en MongoDB y la emite por SSE a todos los clientes del tenant.
- * Se usa desde otros controllers — nunca lanza para no romper el flujo principal.
- */
-export async function crearYEmitir(db, tenantDbName, { tipo, titulo, mensaje, meta = {} }) {
-  try {
-    const Notification = getNotificationModel(db)
-    const notif = await Notification.create({ tipo, titulo, mensaje, meta })
-    sseService.emit(tenantDbName, { evento: 'notificacion', data: formatNotif(notif) })
-  } catch (err) {
-    console.error('[Notificaciones] Error al crear/emitir:', err.message)
   }
 }
 

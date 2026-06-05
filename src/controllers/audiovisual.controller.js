@@ -5,22 +5,7 @@ import {
   obtenerPresignedPutAudiovisual,
 } from "../services/s3.service.js"
 import { crearYEmitir } from "./notification.controller.js"
-
-function toResponse(doc) {
-  if (!doc) return null
-  const o = doc.toObject ? doc.toObject() : doc
-  return {
-    id: o._id?.toString(),
-    tipo: o.tipo,
-    plataforma: o.plataforma,
-    formato: o.formato ?? "",
-    estado: o.estado ?? "pendiente",
-    campanaAsociada: o.campanaAsociada ?? "",
-    url: o.url,
-    contentType: o.contentType,
-    fechaCreacion: o.createdAt,
-  }
-}
+import { toAudiovisualResponse as toResponse } from "../utils/responseFormatters.js"
 
 export async function listar(req, res) {
   try {

@@ -1,11 +1,7 @@
-import bcrypt from "bcrypt"
-import jwt from "jsonwebtoken"
 import { getRegistryDb, getDb } from "../config/connectionManager.js"
 import { getTenantModel } from "../models/tenant.model.js"
 import { getUserModel } from "../models/user.model.js"
-
-const JWT_SECRET = process.env.JWT_SECRET
-const SALT_ROUNDS = 10
+import { hashPassword, generarToken, setCookieToken } from "../services/auth.service.js"
 
 function generarSlug(nombre) {
   return nombre
@@ -46,7 +42,7 @@ export async function registrarTenant(req, res) {
 
     const tenantDb = await getDb(dbName)
     const User = getUserModel(tenantDb)
-    const hash = await bcrypt.hash(password, SALT_ROUNDS)
+    const hash = await hashPassword(password)
     const user = await User.create({
       email: emailNorm,
       password: hash,
@@ -55,20 +51,8 @@ export async function registrarTenant(req, res) {
       isOriginalAdmin: true,
     })
 
-    const token = jwt.sign(
-      { userId: user._id.toString(), tenantSlug: slug },
-      JWT_SECRET,
-      { expiresIn: "1d" }
-    )
-
-    const isProd = process.env.NODE_ENV === "production"
-    res.cookie("miracle_token", token, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? "none" : "lax",
-      maxAge: 24 * 60 * 60 * 1000,
-      path: "/",
-    })
+    const token = generarToken(user._id, slug)
+    setCookieToken(res, token)
 
     console.log(`✅ Nuevo tenant: ${slug} (DB: ${dbName})`)
 

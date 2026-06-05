@@ -1,23 +1,7 @@
 import { getClienteModel } from "../models/cliente.model.js"
 import mongoose from "mongoose"
 import { crearYEmitir } from "./notification.controller.js"
-
-function toClienteResponse(doc) {
-  if (!doc) return null
-  const o = doc.toObject ? doc.toObject() : doc
-  return {
-    id: o._id?.toString(),
-    nombreEmpresa: o.nombreEmpresa,
-    cedulaNit: o.cedulaNit,
-    email: o.email,
-    whatsapp: o.whatsapp,
-    direccion: o.direccion,
-    ciudadBarrio: o.ciudadBarrio,
-    estado: o.estado,
-    miracleCoins: o.miracleCoins ?? 0,
-    fechaCreacion: o.createdAt,
-  }
-}
+import { toClienteResponse } from "../utils/responseFormatters.js"
 
 export async function listarTodos(req, res) {
   try {

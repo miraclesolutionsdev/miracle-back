@@ -1,21 +1,7 @@
 import { getCampanaModel } from "../models/campana.model.js"
 import mongoose from "mongoose"
 import { crearYEmitir } from "./notification.controller.js"
-
-function toResponse(doc) {
-  if (!doc) return null
-  const o = doc.toObject ? doc.toObject() : doc
-  return {
-    id: o._id?.toString(),
-    nombre: o.nombre ?? "",
-    producto: o.producto ?? "",
-    piezaCreativo: o.piezaCreativo ?? "",
-    plataforma: o.plataforma ?? "",
-    miracleCoins: o.miracleCoins ?? 0,
-    estado: o.estado ?? "borrador",
-    createdAt: o.createdAt,
-  }
-}
+import { toCampanaResponse as toResponse } from "../utils/responseFormatters.js"
 
 export async function listar(req, res) {
   try {

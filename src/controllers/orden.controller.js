@@ -8,6 +8,7 @@ import {
   calcularTotalesOrden,
 } from '../utils/ordenUtils.js'
 import { crearYEmitir } from './notification.controller.js'
+import { calcularGanancias } from '../services/orden.service.js'
 import { MercadoPagoConfig, Payment } from 'mercadopago'
 
 const mpClient = new MercadoPagoConfig({
@@ -342,83 +343,8 @@ export async function cancelarOrden(req, res) {
 export async function obtenerGanancias(req, res) {
   try {
     const { desde, hasta } = req.query
-    const Orden = getOrdenModel(req.db)
-    const Producto = getProductoModel(req.db)
-
-    // Filtro: órdenes completadas (pagadas y preparadas)
-    const filtro = {
-      estadoPago: 'pagado',
-      estadoPreparacion: 'preparado',
-    }
-
-    if (desde || hasta) {
-      filtro.createdAt = {}
-      if (desde) filtro.createdAt.$gte = new Date(desde)
-      if (hasta) {
-        const fechaHasta = new Date(hasta)
-        fechaHasta.setHours(23, 59, 59, 999)
-        filtro.createdAt.$lte = fechaHasta
-      }
-    }
-
-    const ordenes = await Orden.find(filtro).lean()
-
-    let totalVendido = 0
-    let totalUtilidad = 0
-    let totalGananciaNeta = 0
-    const detalleProductos = {}
-
-    // Recorrer cada orden completada
-    for (const orden of ordenes) {
-      for (const item of orden.productos) {
-        const producto = await Producto.findById(item.productoId).lean()
-
-        // Precio cliente (lo que se cobró) - usar precioUnitario del modelo
-        const precioCliente = item.precioUnitario || 0
-        const cantidad = item.cantidad || 1
-        const subtotalVenta = precioCliente * cantidad
-
-        totalVendido += subtotalVenta
-
-        if (producto) {
-          // Calcular utilidad basada en el porcentaje configurado
-          const utilidadPorcentaje = Number.isNaN(Number(producto.utilidad)) ? 30 : Number(producto.utilidad)
-          const montoUtilidad = (precioCliente * utilidadPorcentaje) / 100
-          const montoGananciaNeta = precioCliente - montoUtilidad
-
-          totalUtilidad += montoUtilidad * cantidad
-          totalGananciaNeta += montoGananciaNeta * cantidad
-
-          // Detalle por producto
-          const key = producto._id.toString()
-          if (!detalleProductos[key]) {
-            detalleProductos[key] = {
-              productoId: key,
-              nombre: producto.nombre,
-              cantidadVendida: 0,
-              totalVendido: 0,
-              totalUtilidad: 0,
-              totalGananciaNeta: 0,
-              utilidadPorcentaje,
-            }
-          }
-          detalleProductos[key].cantidadVendida += cantidad
-          detalleProductos[key].totalVendido += subtotalVenta
-          detalleProductos[key].totalUtilidad += montoUtilidad * cantidad
-          detalleProductos[key].totalGananciaNeta += montoGananciaNeta * cantidad
-        }
-      }
-    }
-
-    res.json({
-      resumen: {
-        totalVendido: Math.round(totalVendido),
-        totalUtilidad: Math.round(totalUtilidad),
-        totalGananciaNeta: Math.round(totalGananciaNeta),
-        cantidadOrdenes: ordenes.length,
-      },
-      detalleProductos: Object.values(detalleProductos),
-    })
+    const resultado = await calcularGanancias(req.db, { desde, hasta })
+    res.json(resultado)
   } catch (err) {
     console.error('[Ordenes] Error obteniendo ganancias:', err.message)
     res.status(500).json({ error: 'Error al obtener ganancias' })

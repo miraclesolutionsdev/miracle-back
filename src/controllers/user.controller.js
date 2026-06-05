@@ -1,8 +1,6 @@
 import { getUserModel } from "../models/user.model.js"
-import bcrypt from "bcrypt"
+import { resolveIsOriginalAdmin, hashPassword, verificarPassword } from "../services/auth.service.js"
 import mongoose from "mongoose"
-
-const SALT_ROUNDS = 10
 
 function toSafeUser(doc, effectiveOriginal = null) {
   if (!doc) return null
@@ -15,19 +13,6 @@ function toSafeUser(doc, effectiveOriginal = null) {
     activo: o.activo !== false,
     isOriginalAdmin: isOriginal,
   }
-}
-
-async function isOriginalAdmin(db, userId) {
-  const User = getUserModel(db)
-  const users = await User.find({}).select("_id isOriginalAdmin").sort({ createdAt: 1 }).lean()
-  if (!users.length) return false
-  const targetId = userId.toString ? userId.toString() : String(userId)
-  const target = users.find((u) => u._id.toString() === targetId)
-  if (!target) return false
-  if (target.isOriginalAdmin === true) return true
-  const hasAnyOriginal = users.some((u) => u.isOriginalAdmin === true)
-  if (hasAnyOriginal) return false
-  return users[0]._id.toString() === targetId
 }
 
 export async function listar(req, res) {
@@ -61,7 +46,7 @@ export async function crear(req, res) {
     if (exists) {
       return res.status(409).json({ error: "Ya existe un usuario con ese email" })
     }
-    const hash = await bcrypt.hash(password, SALT_ROUNDS)
+    const hash = await hashPassword(password)
     const user = await User.create({
       email: emailNorm,
       password: hash,
@@ -87,9 +72,9 @@ export async function actualizar(req, res) {
     const user = await User.findById(id)
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" })
     const update = {}
-    const original = await isOriginalAdmin(req.db, id)
+    const original = await resolveIsOriginalAdmin(req.db, id)
     if (original) {
-      const requesterIsOriginal = await isOriginalAdmin(req.db, requesterId)
+      const requesterIsOriginal = await resolveIsOriginalAdmin(req.db, requesterId)
       if (!requesterIsOriginal) {
         return res.status(403).json({ error: "Solo el administrador original puede modificar su propia cuenta" })
       }
@@ -113,9 +98,9 @@ export async function actualizar(req, res) {
       }
       const userWithPass = await User.findById(id).select("+password")
       if (!userWithPass) return res.status(404).json({ error: "Usuario no encontrado" })
-      const ok = await bcrypt.compare(contraseñaActual, userWithPass.password)
+      const ok = await verificarPassword(contraseñaActual, userWithPass.password)
       if (!ok) return res.status(401).json({ error: "Contraseña actual incorrecta" })
-      update.password = await bcrypt.hash(nuevaContraseña, SALT_ROUNDS)
+      update.password = await hashPassword(nuevaContraseña)
     } else if (contraseñaActual || nuevaContraseña) {
       return res.status(400).json({ error: "Para cambiar la contraseña debes indicar la actual y la nueva" })
     }
@@ -137,7 +122,7 @@ export async function eliminar(req, res) {
     const User = getUserModel(req.db)
     const user = await User.findById(id).lean()
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" })
-    const original = await isOriginalAdmin(req.db, id)
+    const original = await resolveIsOriginalAdmin(req.db, id)
     if (original) {
       return res.status(403).json({ error: "No se puede eliminar al administrador original" })
     }

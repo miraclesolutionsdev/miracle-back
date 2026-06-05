@@ -72,21 +72,3 @@ export function calcularTotalesOrden(productos = []) {
   return { totalMonto, productosCalculados }
 }
 
-export const estadoOrdenStyleMap = {
-  pendiente:  { color: '#FFC107', label: 'Pendiente' },
-  procesando: { color: '#2196F3', label: 'Procesando' },
-  completada: { color: '#4CAF50', label: 'Completada' },
-  entregada:  { color: '#558B2F', label: 'Entregada' },
-  cancelada:  { color: '#F44336', label: 'Cancelada' },
-}
-
-export const tipoTicketIconMap = {
-  creacion:              '📋',
-  pago_recibido:         '✅',
-  procesamiento_inicio:  '⏱️',
-  envio:                 '📦',
-  entrega:               '🎁',
-  problema:              '⚠️',
-  cancelacion:           '❌',
-  actualización:         '🔄',
-}
